@@ -7,15 +7,19 @@ import {
   PhoneIcon } from
 'lucide-react';
 import { useToast } from './Toast';
+import { supabase } from '../supabase';
 interface CandidateFormModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onSuccess?: () => void;
 }
 export function CandidateFormModal({
   isOpen,
-  onClose
+  onClose,
+  onSuccess
 }: CandidateFormModalProps) {
   const { showToast } = useToast();
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -26,22 +30,46 @@ export function CandidateFormModal({
     position: '',
     document: ''
   });
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    showToast('Candidato creado exitosamente: ' + formData.name, 'success');
-    console.log('Nuevo candidato:', formData);
-    onClose();
-    // Reset form
-    setFormData({
-      name: '',
-      email: '',
-      phone: '',
-      age: '',
-      gender: 'M',
-      education: '',
-      position: '',
-      document: ''
-    });
+    setIsSubmitting(true);
+    try {
+      // Solo insertamos los campos que existen en la tabla de Supabase
+      const candidateData = {
+        name: formData.name,
+        email: formData.email,
+        position: formData.position,
+        status: 'pending',
+        compatibility: 0
+      };
+      const { data, error } = await supabase.
+      from('candidates').
+      insert([candidateData]).
+      select();
+      if (error) throw error;
+      showToast(`Candidato creado exitosamente: ${formData.name}`, 'success');
+      // Reset form
+      setFormData({
+        name: '',
+        email: '',
+        phone: '',
+        age: '',
+        gender: 'M',
+        education: '',
+        position: '',
+        document: ''
+      });
+      // Call onSuccess to trigger refresh
+      if (onSuccess) {
+        onSuccess();
+      }
+      onClose();
+    } catch (error: any) {
+      console.error('Error al crear candidato:', error);
+      showToast(`Error: ${error.message}`, 'error');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
   if (!isOpen) return null;
   return (
@@ -281,15 +309,17 @@ export function CandidateFormModal({
             <button
               type="button"
               onClick={onClose}
-              className="px-6 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors font-medium">
+              disabled={isSubmitting}
+              className="px-6 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors font-medium disabled:opacity-50">
               
               Cancelar
             </button>
             <button
               type="submit"
-              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium shadow-sm">
+              disabled={isSubmitting}
+              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">
               
-              Crear Candidato
+              {isSubmitting ? 'Guardando...' : 'Crear Candidato'}
             </button>
           </div>
         </form>
