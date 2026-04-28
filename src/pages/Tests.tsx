@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   ClipboardListIcon,
   PlayIcon,
@@ -6,223 +6,416 @@ import {
   BarChart3Icon,
   EditIcon,
   CopyIcon,
-  TrashIcon,
-  XIcon // Icono para cerrar modales
-} from 'lucide-react';
-import { testCatalog as initialCatalog } from '../data/mockData';
+  ArchiveIcon,
+  RotateCcwIcon } from
+'lucide-react';
+import { supabase } from '../supabase';
 import { useToast } from '../components/Toast';
-import { TestPreviewModal } from '../components/TestPreviewModal';
-import { ApplyTestModal } from '../components/ApplyTestModal';
+function StatCard({ label, value, icon, color }: any) {
+  return (
+    <div className="bg-white rounded-xl border p-6 flex justify-between items-center hover:shadow-md transition">
+      <div>
+        <p className="text-sm text-gray-500">{label}</p>
+        <p className="text-2xl font-bold text-gray-900">{value}</p>
+      </div>
+      <div className={`p-3 rounded-lg ${color}`}>{icon}</div>
+    </div>);
 
-export function Tests() {
-  const [tests, setTests] = useState(initialCatalog);
-  const [selectedTest, setSelectedTest] = useState<typeof initialCatalog[0] | null>(null);
+}
+export function Tests({
+  onApplyTest
 
-  // Estados para control de modales profesionales
-  const [showPreviewModal, setShowPreviewModal] = useState(false);
-  const [showApplyModal, setShowApplyModal] = useState(false);
+
+}: {onApplyTest?: (testId: string, candidateId: string) => void;}) {
+  const [tests, setTests] = useState<any[]>([]);
+  const [archivedTests, setArchivedTests] = useState<any[]>([]);
+  const [candidates, setCandidates] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
   const [showEditModal, setShowEditModal] = useState(false);
-  const [showDeleteModal, setShowDeleteModal] = useState(false);
-
-  const [selectedTestForAction, setSelectedTestForAction] = useState<typeof initialCatalog[0] | null>(null);
+  const [showArchiveModal, setShowArchiveModal] = useState(false);
+  const [showApplyModal, setShowApplyModal] = useState(false);
+  const [showArchivedSection, setShowArchivedSection] = useState(false);
+  const [selectedTestForAction, setSelectedTestForAction] = useState<
+    any | null>(
+    null);
   const { showToast } = useToast();
+  useEffect(() => {
+    loadTests();
+    loadArchivedTests();
+  }, []);
+  const loadTests = async () => {
+    const { data, error } = await supabase.
+    from('tests').
+    select('*').
+    or('archived.eq.false,archived.is.null');
+    if (error) {
+      console.error('Error cargando tests:', error);
+    }
+    setTests(data || []);
+    setLoading(false);
+  };
 
-  // --- Manejadores Profesionales ---
+  const loadArchivedTests = async () => {
+    const { data, error } = await supabase.
+    from('tests').
+    select('*').
+    eq('archived', true);
+    if (error) {
+      console.error('Error cargando tests archivados:', error);
+    }
+    setArchivedTests(data || []);
+  };
 
-  const handleEditClick = (test: typeof initialCatalog[0]) => {
-    setSelectedTestForAction({ ...test }); // Clonamos para edición limpia
+  const loadCandidates = async () => {
+    const { data } = await supabase.from('candidates').select('*');
+    setCandidates(data || []);
+  };
+  const handleEditClick = (test: any) => {
+    setSelectedTestForAction({
+      ...test
+    });
     setShowEditModal(true);
   };
-
-  const handleSaveEdit = (e: React.FormEvent) => {
+  const handleSaveEdit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (selectedTestForAction) {
-      setTests((prev) => prev.map((t) => t.id === selectedTestForAction.id ? selectedTestForAction : t));
-      setShowEditModal(false);
-      showToast('Cambios guardados con éxito', 'success');
-    }
-  };
+    if (!selectedTestForAction) return;
 
-  const handleDeleteClick = (test: typeof initialCatalog[0]) => {
+    const { error } = await supabase.
+    from('tests').
+    update({
+      name: selectedTestForAction.name
+    }).
+    eq('id', selectedTestForAction.id);
+
+    if (error) {
+      console.error('Error guardando:', error);
+      showToast(`Error al guardar: ${error.message}`, 'error');
+      return;
+    }
+
+    showToast('Cambios guardados', 'success');
+    setShowEditModal(false);
+    loadTests();
+  };
+  const handleArchiveClick = (test: any) => {
     setSelectedTestForAction(test);
-    setShowDeleteModal(true);
+    setShowArchiveModal(true);
+  };
+  const confirmArchive = async () => {
+    if (!selectedTestForAction) return;
+
+    const { error } = await supabase.
+    from('tests').
+    update({ archived: true }).
+    eq('id', selectedTestForAction.id);
+
+    if (error) {
+      console.error('Error archivando:', error);
+      showToast(`Error al archivar: ${error.message}`, 'error');
+      return;
+    }
+
+    showToast('Prueba archivada correctamente', 'success');
+    setShowArchiveModal(false);
+    loadTests();
+    loadArchivedTests();
   };
 
-  const confirmDelete = () => {
-    if (selectedTestForAction) {
-      setTests((prev) => prev.filter((t) => t.id !== selectedTestForAction.id));
-      setShowDeleteModal(false);
-      showToast('Prueba eliminada del catálogo', 'success');
+  const handleRestoreClick = async (test: any) => {
+    const { error } = await supabase.
+    from('tests').
+    update({ archived: false }).
+    eq('id', test.id);
+
+    if (error) {
+      console.error('Error restaurando:', error);
+      showToast(`Error al restaurar: ${error.message}`, 'error');
+      return;
+    }
+
+    showToast('Prueba restaurada correctamente', 'success');
+    loadTests();
+    loadArchivedTests();
+  };
+
+  const handleDuplicateTest = async (test: any) => {
+    const { error } = await supabase.from('tests').insert({
+      name: test.name + ' (Copia)',
+      description: test.description,
+      format: test.format,
+      archived: false
+    });
+
+    if (error) {
+      console.error('Error duplicando:', error);
+      showToast(`Error al duplicar: ${error.message}`, 'error');
+      return;
+    }
+
+    showToast('Duplicado correctamente', 'success');
+    loadTests();
+  };
+  const handleApply = async (test: any) => {
+    setSelectedTestForAction(test);
+    await loadCandidates();
+    setShowApplyModal(true);
+  };
+  const startTest = (candidateId: string) => {
+    if (onApplyTest && selectedTestForAction) {
+      onApplyTest(selectedTestForAction.id, candidateId);
     }
   };
-
-  const handleDuplicateTest = (test: typeof initialCatalog[0]) => {
-    const duplicated = {
-      ...test,
-      id: `${test.id}-COPY-${Math.floor(Math.random() * 1000)}`,
-      name: `${test.name} (Copia)`
-    };
-    setTests((prev) => [...prev, duplicated]);
-    showToast('Prueba duplicada con éxito', 'success');
-  };
-
+  if (loading) return <div className="p-6">Cargando...</div>;
   return (
-    <div className="p-6 space-y-6">
-      {/* Header */}
+    <div className="p-6 space-y-6 bg-gradient-to-br from-gray-50 to-gray-100 min-h-screen">
+      {/* HEADER */}
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Catálogo de Pruebas Psicométricas</h1>
-        <p className="text-gray-600 mt-1">Batería de {tests.length} pruebas laborales para evaluación de competencias</p>
+        <h1 className="text-3xl font-extrabold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
+          Pruebas Psicométricas
+        </h1>
+        <p className="text-gray-500 mt-1">
+          Gestiona y aplica evaluaciones laborales
+        </p>
       </div>
-
-      {/* Stats */}
+ 
+      {/* STATS */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <StatCard label="Total Pruebas" value={tests.length} icon={<ClipboardListIcon className="text-blue-600" />} color="bg-blue-50" />
-        <StatCard label="Total Reactivos" value={tests.reduce((sum, t) => sum + t.items, 0)} icon={<FileTextIcon className="text-green-600" />} color="bg-green-50" />
-        <StatCard label="Aplicaciones" value="156" icon={<PlayIcon className="text-purple-600" />} color="bg-purple-50" />
-        <StatCard label="Promedio Score" value="76" icon={<BarChart3Icon className="text-orange-600" />} color="bg-orange-50" />
+        <StatCard
+          label="Total Pruebas"
+          value={tests.length}
+          icon={<ClipboardListIcon />}
+          color="bg-blue-50" />
+        
+        <StatCard
+          label="Aplicaciones"
+          value="--"
+          icon={<PlayIcon />}
+          color="bg-purple-50" />
+        
+        <StatCard
+          label="Resultados"
+          value="--"
+          icon={<BarChart3Icon />}
+          color="bg-orange-50" />
+        
+        <StatCard
+          label="Items"
+          value="--"
+          icon={<FileTextIcon />}
+          color="bg-green-50" />
+        
       </div>
-
-      {/* Grid de Pruebas con Estilo Original */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {tests.map((test) =>
-        <div key={test.id} className="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-md transition-shadow">
-            <div className="flex items-start justify-between mb-4">
-              <div className="flex-1">
-                <div className="flex items-center space-x-2 mb-2">
-                  <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-bold">{test.id}</span>
-                  <span className="text-xs text-gray-500">{test.items} reactivos</span>
+ 
+      {/* PRUEBAS ACTIVAS */}
+      <div>
+        <h2 className="text-xl font-bold text-gray-900 mb-4">Pruebas Activas</h2>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {tests.map((test) =>
+          <div
+            key={test.id}
+            className="bg-white/80 backdrop-blur rounded-2xl border border-gray-200 p-6 hover:shadow-xl hover:-translate-y-1 transition-all duration-300">
+            
+              <div className="flex justify-between mb-4">
+                <div>
+                  <h3 className="font-bold text-lg text-gray-900">{test.name}</h3>
+                  <p className="text-sm text-gray-500">{test.description}</p>
                 </div>
-                <h3 className="text-lg font-bold text-gray-900">{test.name}</h3>
-                <p className="text-sm text-gray-600 mt-1">{test.description}</p>
+ 
+                <div className="flex gap-2">
+                  <button
+                  onClick={() => handleEditClick(test)}
+                  className="p-2 hover:bg-blue-50 rounded-lg">
+                  
+                    <EditIcon className="w-4 h-4 text-gray-500 hover:text-blue-600" />
+                  </button>
+                  <button
+                  onClick={() => handleDuplicateTest(test)}
+                  className="p-2 hover:bg-green-50 rounded-lg">
+                  
+                    <CopyIcon className="w-4 h-4 text-gray-500 hover:text-green-600" />
+                  </button>
+                  <button
+                  onClick={() => handleArchiveClick(test)}
+                  className="p-2 hover:bg-yellow-50 rounded-lg">
+                  
+                    <ArchiveIcon className="w-4 h-4 text-gray-500 hover:text-yellow-600" />
+                  </button>
+                </div>
               </div>
-              <div className="flex items-center space-x-1">
-                <button onClick={() => handleEditClick(test)} className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"><EditIcon className="w-4 h-4" /></button>
-                <button onClick={() => handleDuplicateTest(test)} className="p-2 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"><CopyIcon className="w-4 h-4" /></button>
-                <button onClick={() => handleDeleteClick(test)} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><TrashIcon className="w-4 h-4" /></button>
+ 
+              <div className="pt-4 border-t border-gray-200">
+                <p className="text-xs text-gray-500">Formato</p>
+                <p className="font-medium text-gray-800">{test.format}</p>
+              </div>
+ 
+              {/* BOTÓN APLICAR */}
+              <div className="mt-5">
+                <button
+                onClick={() => handleApply(test)}
+                className="w-full py-2.5 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-xl font-semibold shadow-md hover:shadow-lg hover:scale-[1.02] transition-all">
+                
+                  Aplicar Prueba
+                </button>
               </div>
             </div>
-
-            <div className="pt-4 border-t border-gray-200">
-              <p className="text-xs text-gray-500 mb-1">Formato:</p>
-              <p className="text-sm font-medium text-gray-900">{test.format}</p>
-            </div>
-
-            <div className="flex space-x-2 mt-6">
-              <button onClick={() => {setSelectedTestForAction(test);setShowPreviewModal(true);}} className="flex-1 py-2 bg-blue-50 hover:bg-blue-100 rounded-lg text-sm font-medium text-blue-700 transition-colors flex items-center justify-center space-x-2">
-                <PlayIcon className="w-4 h-4" />
-                <span>Vista Previa</span>
-              </button>
-              <button onClick={() => setSelectedTest(test)} className="flex-1 py-2 bg-gray-50 hover:bg-gray-100 rounded-lg text-sm font-medium text-gray-700 transition-colors">
-                Ver Detalle
-              </button>
-            </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
+ 
+      {/* PRUEBAS ARCHIVADAS */}
+      <div className="border-t pt-6">
+        <button
+          onClick={() => setShowArchivedSection(!showArchivedSection)}
+          className="text-lg font-bold text-gray-900 mb-4 hover:text-blue-600 transition flex items-center gap-2">
+          
+          <ArchiveIcon className="w-5 h-5" />
+          Pruebas Archivadas ({archivedTests.length})
+        </button>
+ 
+        {showArchivedSection &&
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {archivedTests.length > 0 ?
+          archivedTests.map((test) =>
+          <div
+            key={test.id}
+            className="bg-gray-100/50 backdrop-blur rounded-2xl border border-gray-300 p-6 opacity-75 hover:opacity-100 hover:shadow-lg transition-all duration-300">
+            
+                  <div className="flex justify-between mb-4">
+                    <div>
+                      <h3 className="font-bold text-lg text-gray-700">{test.name}</h3>
+                      <p className="text-sm text-gray-500">{test.description}</p>
+                    </div>
+ 
+                    <div className="flex gap-2">
+                      <button
+                  onClick={() => handleDuplicateTest(test)}
+                  className="p-2 hover:bg-green-50 rounded-lg">
+                  
+                        <CopyIcon className="w-4 h-4 text-gray-500 hover:text-green-600" />
+                      </button>
+                      <button
+                  onClick={() => handleRestoreClick(test)}
+                  className="p-2 hover:bg-blue-50 rounded-lg"
+                  title="Restaurar prueba">
+                  
+                        <RotateCcwIcon className="w-4 h-4 text-gray-500 hover:text-blue-600" />
+                      </button>
+                    </div>
+                  </div>
+ 
+                  <div className="pt-4 border-t border-gray-300">
+                    <p className="text-xs text-gray-500">Formato</p>
+                    <p className="font-medium text-gray-700">{test.format}</p>
+                  </div>
+ 
+                  <div className="mt-5 text-center">
+                    <p className="text-xs text-gray-500">Archivada</p>
+                  </div>
+                </div>
+          ) :
 
-      {/* --- MODAL DE EDICIÓN PROFESIONAL --- */}
-      {showEditModal && selectedTestForAction &&
-      <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-[60]">
-          <div className="bg-white rounded-xl max-w-md w-full p-6 shadow-2xl animate-in fade-in zoom-in duration-200">
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-xl font-bold text-gray-900">Editar Prueba</h2>
-              <button onClick={() => setShowEditModal(false)} className="text-gray-400 hover:text-gray-600"><XIcon className="w-5 h-5" /></button>
-            </div>
-            <form onSubmit={handleSaveEdit} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Nombre de la Prueba</label>
-                <input
-                type="text"
-                autoFocus
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all"
-                value={selectedTestForAction.name}
-                onChange={(e) => setSelectedTestForAction({ ...selectedTestForAction, name: e.target.value })} />
+          <p className="text-gray-500 col-span-full text-center py-8">
+                No hay pruebas archivadas
+              </p>
+          }
+          </div>
+        }
+      </div>
+ 
+      {/* MODAL APLICAR */}
+      {showApplyModal && selectedTestForAction &&
+      <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl">
+            <h2 className="font-bold text-lg mb-4">
+              Aplicar: {selectedTestForAction.name}
+            </h2>
+ 
+            <div className="space-y-2 max-h-60 overflow-y-auto">
+              {candidates.map((c) =>
+            <button
+              key={c.id}
+              onClick={() => startTest(c.id)}
+              className="w-full text-left p-4 border border-gray-200 rounded-xl hover:bg-blue-50 hover:border-blue-300 transition-all">
               
-              </div>
-              <div className="flex space-x-3 mt-6">
-                <button type="button" onClick={() => setShowEditModal(false)} className="flex-1 py-2 bg-gray-100 text-gray-700 rounded-lg font-medium hover:bg-gray-200 transition-colors">Cancelar</button>
-                <button type="submit" className="flex-1 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors">Guardar Cambios</button>
+                  <div className="font-medium text-gray-800">{c.name}</div>
+                  <div className="text-xs text-gray-500">{c.email}</div>
+                </button>
+            )}
+            </div>
+ 
+            <button
+            onClick={() => setShowApplyModal(false)}
+            className="mt-4 w-full py-2.5 rounded-xl bg-gray-100 hover:bg-gray-200 font-medium transition">
+            
+              Cancelar
+            </button>
+          </div>
+        </div>
+      }
+ 
+      {/* EDIT MODAL */}
+      {showEditModal && selectedTestForAction &&
+      <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-white p-6 rounded-2xl w-full max-w-md shadow-2xl">
+            <h3 className="font-bold text-lg mb-4">Editar Prueba</h3>
+            <form onSubmit={handleSaveEdit}>
+              <input
+              className="w-full border p-2 rounded-lg mb-4"
+              placeholder="Nombre de la prueba"
+              value={selectedTestForAction.name}
+              onChange={(e) =>
+              setSelectedTestForAction({
+                ...selectedTestForAction,
+                name: e.target.value
+              })
+              } />
+            
+              <div className="flex gap-3">
+                <button
+                type="button"
+                onClick={() => setShowEditModal(false)}
+                className="flex-1 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 font-medium">
+                
+                  Cancelar
+                </button>
+                <button
+                type="submit"
+                className="flex-1 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 font-medium">
+                
+                  Guardar
+                </button>
               </div>
             </form>
           </div>
         </div>
       }
-
-      {/* --- MODAL DE ELIMINACIÓN PROFESIONAL --- */}
-      {showDeleteModal && selectedTestForAction &&
-      <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-[60]">
-          <div className="bg-white rounded-xl max-w-sm w-full p-6 shadow-2xl text-center animate-in fade-in zoom-in duration-200">
-            <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-4">
-              <TrashIcon className="w-8 h-8 text-red-600" />
-            </div>
-            <h2 className="text-xl font-bold text-gray-900 mb-2">¿Confirmar eliminación?</h2>
-            <p className="text-gray-600 mb-6 text-sm">Esta acción no se puede deshacer. Se eliminará la prueba <strong>{selectedTestForAction.name}</strong> definitivamente.</p>
-            <div className="flex space-x-3">
-              <button onClick={() => setShowDeleteModal(false)} className="flex-1 py-2 bg-gray-100 text-gray-700 rounded-lg font-medium hover:bg-gray-200 transition-colors">Cancelar</button>
-              <button onClick={confirmDelete} className="flex-1 py-2 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 transition-colors">Eliminar</button>
-            </div>
-          </div>
-        </div>
-      }
-
-      {/* Modal de Detalle (Resto del código original) */}
-      {selectedTest &&
-      <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50" onClick={() => setSelectedTest(null)}>
-          <div className="bg-white rounded-xl max-w-3xl w-full p-6 max-h-[90vh] overflow-y-auto shadow-2xl" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-start justify-between mb-6">
-              <div>
-                <div className="flex items-center space-x-2 mb-2">
-                  <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-lg text-sm font-bold">{selectedTest.id}</span>
-                  <span className="text-sm text-gray-500">{selectedTest.items} reactivos</span>
-                </div>
-                <h2 className="text-2xl font-bold text-gray-900">{selectedTest.name}</h2>
-                <p className="text-gray-600 mt-2">{selectedTest.description}</p>
-              </div>
-            </div>
-            <div className="space-y-6">
-              <div className="bg-gray-50 rounded-lg p-4">
-                <h3 className="font-semibold text-gray-900 mb-2">Formato de Aplicación</h3>
-                <p className="text-sm text-gray-700">{selectedTest.format}</p>
-              </div>
-              <div className="bg-gray-50 rounded-lg p-4">
-                <h3 className="font-semibold text-gray-900 mb-3">Factores Evaluados</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {selectedTest.factors.map((factor, idx) =>
-                <div key={idx} className="flex items-center space-x-2">
-                      <div className="w-2 h-2 rounded-full bg-blue-600" />
-                      <span className="text-sm text-gray-700">{factor}</span>
-                    </div>
-                )}
-                </div>
-              </div>
-            </div>
-            <div className="flex items-center space-x-3 mt-8">
-              <button onClick={() => setSelectedTest(null)} className="flex-1 py-2.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium">Cerrar</button>
-              <button onClick={() => {setSelectedTestForAction(selectedTest);setShowApplyModal(true);setSelectedTest(null);}} className="flex-1 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium flex items-center justify-center space-x-2">
-                <PlayIcon className="w-4 h-4" />
-                <span>Aplicar Prueba</span>
+ 
+      {/* ARCHIVE MODAL */}
+      {showArchiveModal && selectedTestForAction &&
+      <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-white p-6 rounded-2xl w-full max-w-md shadow-2xl">
+            <h3 className="font-bold text-lg mb-4">Archivar Prueba</h3>
+            <p className="text-gray-600 mb-6">
+              ¿Estás seguro de que deseas archivar la prueba "<strong>{selectedTestForAction.name}</strong>"? 
+              Podrás restaurarla desde la sección de "Pruebas Archivadas".
+            </p>
+            <div className="flex gap-3">
+              <button
+              onClick={() => setShowArchiveModal(false)}
+              className="flex-1 py-2.5 rounded-xl bg-gray-100 hover:bg-gray-200 font-medium transition">
+              
+                Cancelar
+              </button>
+              <button
+              onClick={confirmArchive}
+              className="flex-1 py-2.5 rounded-xl bg-yellow-500 hover:bg-yellow-600 text-white font-medium transition">
+              
+                Archivar
               </button>
             </div>
           </div>
         </div>
       }
-
-      <TestPreviewModal isOpen={showPreviewModal} onClose={() => setShowPreviewModal(false)} test={selectedTestForAction} />
-      <ApplyTestModal isOpen={showApplyModal} onClose={() => setShowApplyModal(false)} test={selectedTestForAction} />
-    </div>);
-
-}
-
-function StatCard({ label, value, icon, color }: any) {
-  return (
-    <div className="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-md transition-shadow">
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-sm text-gray-600 mb-1">{label}</p>
-          <p className="text-3xl font-bold text-gray-900">{value}</p>
-        </div>
-        <div className={`w-12 h-12 rounded-lg ${color} flex items-center justify-center`}>{icon}</div>
-      </div>
     </div>);
 
 }

@@ -1,280 +1,279 @@
 import React, { useEffect, useState } from 'react';
-import {
-  ArrowLeftIcon,
-  ArrowRightIcon,
-  CheckCircle2Icon,
-  ClockIcon } from
-'lucide-react';
+import { supabase } from '../supabase';
 interface Question {
-  id: number;
+  id: string;
   text: string;
-  type: 'likert' | 'multiple' | 'forced';
-  options: string[];
+  type: string;
+  options: any;
+  factor?: string;
+  weight?: number;
 }
-const sampleQuestions: Question[] = [
-{
-  id: 1,
-  type: 'likert',
-  text: 'Me considero una persona que cumple con sus compromisos laborales de manera consistente',
-  options: [
-  'Totalmente en desacuerdo',
-  'En desacuerdo',
-  'Neutral',
-  'De acuerdo',
-  'Totalmente de acuerdo']
-
-},
-{
-  id: 2,
-  type: 'likert',
-  text: 'Prefiero seguir procedimientos establecidos antes que improvisar soluciones',
-  options: [
-  'Totalmente en desacuerdo',
-  'En desacuerdo',
-  'Neutral',
-  'De acuerdo',
-  'Totalmente de acuerdo']
-
-},
-{
-  id: 3,
-  type: 'multiple',
-  text: 'Un cliente se queja de un producto defectuoso. ¿Cuál sería tu mejor respuesta?',
-  options: [
-  'Informar que debe contactar al área de garantías',
-  'Escuchar su queja y derivarlo al supervisor',
-  'Disculparse, escuchar activamente y ofrecer una solución inmediata',
-  'Reemplazar el producto de inmediato y hacer seguimiento para asegurar satisfacción']
-
-},
-{
-  id: 4,
-  type: 'forced',
-  text: 'Selecciona la frase que MÁS te describe y la que MENOS te describe:',
-  options: [
-  'Me gusta tomar decisiones rápidas',
-  'Prefiero trabajar en equipo',
-  'Soy muy detallista con los procedimientos',
-  'Me motiva persuadir a otros']
-
-}];
-
-export function TestApplication() {
-  const [currentQuestion, setCurrentQuestion] = useState(0);
-  const [answers, setAnswers] = useState<Record<number, any>>({});
-  const [timeElapsed, setTimeElapsed] = useState(0);
-  const progress = (currentQuestion + 1) / sampleQuestions.length * 100;
-  const question = sampleQuestions[currentQuestion];
-  const handleAnswer = (value: any) => {
-    setAnswers({
-      ...answers,
-      [question.id]: value
-    });
-  };
-  const handleNext = () => {
-    if (currentQuestion < sampleQuestions.length - 1) {
-      setCurrentQuestion(currentQuestion + 1);
-    }
-  };
-  const handlePrevious = () => {
-    if (currentQuestion > 0) {
-      setCurrentQuestion(currentQuestion - 1);
-    }
-  };
+export function TestApplication({ testId, candidateId }: any) {
+  const [test, setTest] = useState<any>(null);
+  const [questions, setQuestions] = useState<Question[]>([]);
+  const [current, setCurrent] = useState(0);
+  const [answers, setAnswers] = useState<any>({});
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [timeLeft, setTimeLeft] = useState(0);
   useEffect(() => {
-    const timer = setInterval(() => {
-      setTimeElapsed((prev) => prev + 1);
-    }, 1000);
-    return () => clearInterval(timer);
-  }, []);
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
+    if (testId) loadTest();
+  }, [testId]);
+  const loadTest = async () => {
+    try {
+      setLoading(true);
+      const { data: testData } = await supabase.
+      from('tests').
+      select('*').
+      eq('id', testId).
+      single();
+      const { data: questionsData } = await supabase.
+      from('questions').
+      select('*').
+      eq('test_id', testId);
+      setTest(testData);
+      setQuestions(questionsData || []);
+      setTimeLeft((testData?.duration || 10) * 60);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
   };
+  // ⏱️ Timer
+  useEffect(() => {
+    if (!timeLeft) return;
+    const timer = setInterval(() => setTimeLeft((t) => t - 1), 1000);
+    return () => clearInterval(timer);
+  }, [timeLeft]);
+  // Auto finalizar cuando se acaba el tiempo
+  useEffect(() => {
+    if (timeLeft === 0 && questions.length > 0) handleFinish();
+  }, [timeLeft]);
+  const handleAnswer = (value: any) => {
+    setAnswers((prev: any) => ({
+      ...prev,
+      [questions[current].id]: value
+    }));
+  };
+  const next = () => {
+    if (!answers[questions[current].id]) return;
+    setCurrent((prev) => prev + 1);
+  };
+  // 🧠 Cálculo de score normalizado a escala 0-100
+  const calculateScore = () => {
+    let rawTotal = 0;
+    let maxPossible = 0;
+    const factors: any = {};
+    questions.forEach((q) => {
+      const value = answers[q.id] || 0;
+      const factor = q.factor || 'general';
+      const weight = q.weight || 1;
+      // Calcular el valor máximo posible de esta pregunta
+      const parsedOpts = q.options ?
+      typeof q.options === 'string' ?
+      JSON.parse(q.options) :
+      q.options :
+      [];
+      const maxValue =
+      parsedOpts.length > 0 ?
+      Math.max(...parsedOpts.map((o: any) => o.value || 0)) :
+      5;
+      rawTotal += value * weight;
+      maxPossible += maxValue * weight;
+      if (!factors[factor]) factors[factor] = 0;
+      factors[factor] += value * weight;
+    });
+    // Normalizar a escala 0-100
+    const normalizedScore =
+    maxPossible > 0 ? Math.round(rawTotal / maxPossible * 100) : 0;
+    return {
+      total: normalizedScore,
+      factors
+    };
+  };
+  const handleFinish = async () => {
+    if (saving) return;
+    try {
+      setSaving(true);
+      const result = calculateScore();
+      const finalScore = Math.round(result.total);
+      // 1️⃣ Guardar resultado en la tabla results
+      const { error: resultError } = await supabase.from('results').insert({
+        test_id: testId,
+        user_name: candidateId || 'Usuario',
+        answers: JSON.stringify(answers),
+        score: finalScore
+      });
+      if (resultError) {
+        console.error('Error guardando resultado:', resultError);
+        alert(`Error guardando resultados: ${resultError.message}`);
+        return;
+      }
+      // 2️⃣ ✅ ACTUALIZAR ESTADO DEL CANDIDATO A "completed"
+      if (candidateId) {
+        // Verificar cuántas pruebas tiene el candidato en total
+        const { data: allResults } = await supabase.
+        from('results').
+        select('id').
+        eq('user_name', String(candidateId));
+        // Calcular compatibilidad promedio para actualizar el campo
+        const { data: allScores } = await supabase.
+        from('results').
+        select('score').
+        eq('user_name', String(candidateId));
+        const avgScore =
+        allScores && allScores.length > 0 ?
+        Math.round(
+          allScores.reduce((s: number, r: any) => s + (r.score || 0), 0) /
+          allScores.length
+        ) :
+        finalScore;
+        const { error: candidateError } = await supabase.
+        from('candidates').
+        update({
+          status: 'completed',
+          compatibility: avgScore
+        }).
+        eq('id', candidateId);
+        if (candidateError) {
+          console.error('Error actualizando candidato:', candidateError);
+          // No bloqueamos el flujo — el resultado ya se guardó
+        }
+      }
+      alert('Prueba completada ✅ — El estado del candidato fue actualizado.');
+      window.location.reload();
+    } catch (err: any) {
+      console.error('Error completo:', err);
+      alert(`Error guardando resultados: ${err.message || 'Error desconocido'}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+  if (loading)
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-gray-50 flex items-center justify-center p-4">
-      <div className="w-full max-w-4xl">
+    <div className="flex items-center justify-center h-screen text-gray-500">
+        Cargando prueba...
+      </div>);
+
+  if (!test)
+  return (
+    <div className="flex items-center justify-center h-screen">
+        No se encontró el test
+      </div>);
+
+  const question = questions[current];
+  const parsedOptions = question?.options ?
+  typeof question.options === 'string' ?
+  JSON.parse(question.options) :
+  question.options :
+  [];
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center p-6">
+      <div className="w-full max-w-2xl">
         {/* Header */}
-        <div className="bg-white rounded-t-xl border border-gray-200 border-b-0 p-6">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h1 className="text-xl font-bold text-gray-900">
-                IRV-20: Integridad, Responsabilidad y Valores
-              </h1>
-              <p className="text-sm text-gray-600 mt-1">
-                Evaluación de integridad y valores laborales
-              </p>
-            </div>
-            <div className="flex items-center space-x-2 text-gray-600">
-              <ClockIcon className="w-5 h-5" />
-              <span className="font-mono text-lg">
-                {formatTime(timeElapsed)}
-              </span>
-            </div>
-          </div>
+        <div className="mb-6 text-center">
+          <h1 className="text-2xl font-bold text-gray-900">{test.name}</h1>
+          <p className="text-gray-500 text-sm">{test.description}</p>
+          <p className="mt-2 text-red-500 font-bold">
+            Tiempo: {Math.floor(timeLeft / 60)}:
+            {String(timeLeft % 60).padStart(2, '0')}
+          </p>
+        </div>
 
-          {/* Progress Bar */}
-          <div className="relative">
-            <div className="flex items-center justify-between text-sm text-gray-600 mb-2">
-              <span>
-                Pregunta {currentQuestion + 1} de {sampleQuestions.length}
-              </span>
-              <span>{Math.round(progress)}% completado</span>
-            </div>
-            <div className="w-full bg-gray-200 rounded-full h-2">
-              <div
-                className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                style={{
-                  width: `${progress}%`
-                }} />
-              
-            </div>
+        {/* Progreso */}
+        <div className="mb-4">
+          <div className="flex justify-between text-xs text-gray-400 mb-1">
+            <span>
+              Pregunta {current + 1} de {questions.length}
+            </span>
+            <span>{Math.round((current + 1) / questions.length * 100)}%</span>
+          </div>
+          <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-blue-600 transition-all duration-300"
+              style={{
+                width: `${(current + 1) / questions.length * 100}%`
+              }} />
+            
           </div>
         </div>
 
-        {/* Question Card */}
-        <div className="bg-white border border-gray-200 p-8">
-          <div className="mb-8">
-            <div className="flex items-start space-x-3 mb-6">
-              <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-sm flex-shrink-0">
-                {currentQuestion + 1}
-              </div>
-              <p className="text-lg text-gray-900 leading-relaxed">
-                {question.text}
-              </p>
-            </div>
+        {/* Tarjeta de pregunta */}
+        <div className="bg-white rounded-2xl shadow-xl p-6 border border-gray-200">
+          <h2 className="text-lg font-semibold mb-4 text-gray-800">
+            {current + 1}. {question?.text}
+          </h2>
+          <div className="space-y-3">
+            {parsedOptions.map((opt: any, i: number) => {
+              const selected = answers[question.id] === opt.value;
+              return (
+                <button
+                  key={i}
+                  onClick={() => handleAnswer(opt.value)}
+                  className={`w-full text-left p-4 rounded-xl border transition-all ${selected ? 'bg-blue-600 text-white border-blue-600 shadow-md' : 'bg-white hover:bg-gray-50 border-gray-200'}`}>
+                  
+                  {opt.label}
+                </button>);
 
-            {question.type === 'likert' &&
-            <div className="space-y-3">
-                {question.options.map((option, index) =>
-              <button
-                key={index}
-                onClick={() => handleAnswer(index + 1)}
-                className={`w-full text-left px-6 py-4 rounded-lg border-2 transition-all ${answers[question.id] === index + 1 ? 'border-blue-600 bg-blue-50' : 'border-gray-200 hover:border-gray-300 bg-white'}`}>
-                
-                    <div className="flex items-center justify-between">
-                      <span className="text-gray-900">{option}</span>
-                      {answers[question.id] === index + 1 &&
-                  <CheckCircle2Icon className="w-5 h-5 text-blue-600" />
-                  }
-                    </div>
-                  </button>
-              )}
-              </div>
-            }
-
-            {question.type === 'multiple' &&
-            <div className="space-y-3">
-                {question.options.map((option, index) =>
-              <button
-                key={index}
-                onClick={() => handleAnswer(index)}
-                className={`w-full text-left px-6 py-4 rounded-lg border-2 transition-all ${answers[question.id] === index ? 'border-blue-600 bg-blue-50' : 'border-gray-200 hover:border-gray-300 bg-white'}`}>
-                
-                    <div className="flex items-start space-x-3">
-                      <div
-                    className={`w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0 mt-0.5 ${answers[question.id] === index ? 'border-blue-600 bg-blue-600' : 'border-gray-300'}`}>
-                    
-                        {answers[question.id] === index &&
-                    <div className="w-2 h-2 rounded-full bg-white" />
-                    }
-                      </div>
-                      <span className="text-gray-900">{option}</span>
-                    </div>
-                  </button>
-              )}
-              </div>
-            }
-
-            {question.type === 'forced' &&
-            <div className="space-y-6">
-                <div>
-                  <p className="text-sm font-semibold text-gray-700 mb-3">
-                    MÁS me describe:
-                  </p>
-                  <div className="space-y-2">
-                    {question.options.map((option, index) =>
-                  <button
-                    key={`most-${index}`}
-                    onClick={() =>
-                    handleAnswer({
-                      most: index,
-                      least: answers[question.id]?.least
-                    })
-                    }
-                    className={`w-full text-left px-4 py-3 rounded-lg border transition-all ${answers[question.id]?.most === index ? 'border-green-600 bg-green-50' : 'border-gray-200 hover:border-gray-300 bg-white'}`}>
-                    
-                        {option}
-                      </button>
-                  )}
-                  </div>
-                </div>
-                <div>
-                  <p className="text-sm font-semibold text-gray-700 mb-3">
-                    MENOS me describe:
-                  </p>
-                  <div className="space-y-2">
-                    {question.options.map((option, index) =>
-                  <button
-                    key={`least-${index}`}
-                    onClick={() =>
-                    handleAnswer({
-                      most: answers[question.id]?.most,
-                      least: index
-                    })
-                    }
-                    className={`w-full text-left px-4 py-3 rounded-lg border transition-all ${answers[question.id]?.least === index ? 'border-red-600 bg-red-50' : 'border-gray-200 hover:border-gray-300 bg-white'}`}>
-                    
-                        {option}
-                      </button>
-                  )}
-                  </div>
-                </div>
-              </div>
-            }
+            })}
           </div>
         </div>
 
-        {/* Navigation */}
-        <div className="bg-white rounded-b-xl border border-gray-200 border-t-0 p-6">
-          <div className="flex items-center justify-between">
-            <button
-              onClick={handlePrevious}
-              disabled={currentQuestion === 0}
-              className="flex items-center space-x-2 px-6 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
-              
-              <ArrowLeftIcon className="w-5 h-5" />
-              <span className="font-medium">Anterior</span>
+        {/* Botones de navegación */}
+        <div className="flex justify-between mt-6">
+          {current > 0 &&
+          <button
+            onClick={() => setCurrent((p) => p - 1)}
+            className="px-5 py-2.5 rounded-xl border border-gray-300 text-gray-700 hover:bg-gray-50">
+            
+              Anterior
             </button>
-
-            {currentQuestion === sampleQuestions.length - 1 ?
-            <button className="flex items-center space-x-2 px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors">
-                <CheckCircle2Icon className="w-5 h-5" />
-                <span className="font-medium">Finalizar Prueba</span>
+          }
+          <div className="ml-auto">
+            {current < questions.length - 1 ?
+            <button
+              onClick={next}
+              disabled={!answers[question?.id]}
+              className="px-5 py-2.5 rounded-xl bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed">
+              
+                Siguiente
               </button> :
 
             <button
-              onClick={handleNext}
-              disabled={!answers[question.id]}
-              className="flex items-center space-x-2 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+              onClick={handleFinish}
+              disabled={saving || !answers[question?.id]}
+              className="px-5 py-2.5 rounded-xl bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 flex items-center gap-2">
               
-                <span className="font-medium">Siguiente</span>
-                <ArrowRightIcon className="w-5 h-5" />
+                {saving ?
+              <>
+                    <svg
+                  className="w-4 h-4 animate-spin"
+                  fill="none"
+                  viewBox="0 0 24 24">
+                  
+                      <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4" />
+                  
+                      <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8v8H4z" />
+                  
+                    </svg>
+                    Guardando...
+                  </> :
+
+              'Finalizar Prueba'
+              }
               </button>
             }
           </div>
-        </div>
-
-        {/* Info Footer */}
-        <div className="mt-6 text-center text-sm text-gray-600">
-          <p>
-            Responde con honestidad. No hay respuestas correctas o incorrectas.
-          </p>
-          <p className="mt-1">
-            Tus respuestas son confidenciales y serán utilizadas únicamente para
-            fines de evaluación laboral.
-          </p>
         </div>
       </div>
     </div>);

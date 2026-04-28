@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   LayoutDashboardIcon,
   UsersIcon,
@@ -11,13 +11,40 @@ import {
   XIcon,
   LogOutIcon } from
 'lucide-react';
+
 interface LayoutProps {
   children: React.ReactNode;
   currentPage: string;
   onNavigate: (page: string) => void;
+  onLogout?: () => void;
 }
-export function Layout({ children, currentPage, onNavigate }: LayoutProps) {
+
+export function Layout({ children, currentPage, onNavigate, onLogout }: LayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [userName, setUserName] = useState('Administrador');
+  const [userRole, setUserRole] = useState('RRHH');
+  const [userInitials, setUserInitials] = useState('AR');
+
+  useEffect(() => {
+    const user = localStorage.getItem('user');
+    if (user) {
+      try {
+        const userData = JSON.parse(user);
+        setUserName(userData.name || 'Administrador');
+        setUserRole(userData.role || 'RRHH');
+        const initials = userData.name.
+        split(' ').
+        map((n: string) => n[0]).
+        join('').
+        toUpperCase().
+        slice(0, 2);
+        setUserInitials(initials);
+      } catch (err) {
+        console.error('Error parsing user data:', err);
+      }
+    }
+  }, []);
+
   const menuItems = [
   {
     id: 'dashboard',
@@ -55,6 +82,13 @@ export function Layout({ children, currentPage, onNavigate }: LayoutProps) {
     icon: SettingsIcon
   }];
 
+
+  const handleLogout = () => {
+    if (onLogout) {
+      onLogout();
+    }
+  };
+
   return (
     <div className="flex h-screen bg-gray-50">
       {/* Sidebar Desktop */}
@@ -79,7 +113,11 @@ export function Layout({ children, currentPage, onNavigate }: LayoutProps) {
               <button
                 key={item.id}
                 onClick={() => onNavigate(item.id)}
-                className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${isActive ? 'bg-blue-50 text-blue-700' : 'text-gray-700 hover:bg-gray-50'}`}>
+                className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                isActive ?
+                'bg-blue-50 text-blue-700' :
+                'text-gray-700 hover:bg-gray-50'}`
+                }>
                 
                 <Icon className="w-5 h-5" />
                 <span>{item.label}</span>
@@ -89,7 +127,10 @@ export function Layout({ children, currentPage, onNavigate }: LayoutProps) {
         </nav>
 
         <div className="p-3 border-t border-gray-200">
-          <button className="w-full flex items-center space-x-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors">
+          <button
+            onClick={handleLogout}
+            className="w-full flex items-center space-x-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-700 hover:bg-red-50 hover:text-red-700 transition-colors">
+            
             <LogOutIcon className="w-5 h-5" />
             <span>Cerrar Sesión</span>
           </button>
@@ -130,7 +171,11 @@ export function Layout({ children, currentPage, onNavigate }: LayoutProps) {
                     onNavigate(item.id);
                     setSidebarOpen(false);
                   }}
-                  className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${isActive ? 'bg-blue-50 text-blue-700' : 'text-gray-700 hover:bg-gray-50'}`}>
+                  className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                  isActive ?
+                  'bg-blue-50 text-blue-700' :
+                  'text-gray-700 hover:bg-gray-50'}`
+                  }>
                   
                     <Icon className="w-5 h-5" />
                     <span>{item.label}</span>
@@ -138,6 +183,19 @@ export function Layout({ children, currentPage, onNavigate }: LayoutProps) {
 
             })}
             </nav>
+
+            <div className="p-3 border-t border-gray-200">
+              <button
+              onClick={() => {
+                handleLogout();
+                setSidebarOpen(false);
+              }}
+              className="w-full flex items-center space-x-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-700 hover:bg-red-50 hover:text-red-700 transition-colors">
+              
+                <LogOutIcon className="w-5 h-5" />
+                <span>Cerrar Sesión</span>
+              </button>
+            </div>
           </aside>
         </div>
       }
@@ -153,15 +211,14 @@ export function Layout({ children, currentPage, onNavigate }: LayoutProps) {
             <MenuIcon className="w-6 h-6 text-gray-600" />
           </button>
 
-          <div className="flex items-center space-x-4">
+          <div className="flex items-center space-x-4 ml-auto">
             <div className="hidden sm:block">
               <p className="text-sm text-gray-500">Bienvenido</p>
-              <p className="text-sm font-semibold text-gray-900">
-                Administrador RRHH
-              </p>
+              <p className="text-sm font-semibold text-gray-900">{userName}</p>
+              <p className="text-xs text-gray-400">{userRole}</p>
             </div>
             <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-white font-semibold text-sm">
-              AR
+              {userInitials}
             </div>
           </div>
         </header>

@@ -42,6 +42,7 @@ import {
   Radar } from
 'recharts';
 import { useToast } from '../components/Toast';
+import { supabase } from '../supabase';
 interface DetailProps {
   candidate: Candidate;
   onBack: () => void;
@@ -52,6 +53,22 @@ export function CandidateDetail({ candidate, onBack, onAddNew }: DetailProps) {
     'overview' | 'tests' | 'factors' | 'alerts'>(
     'overview');
   const { showToast } = useToast();
+  const handleHireCandidate = async () => {
+    if (!window.confirm(`¿Confirmar contratación de ${candidate.name}?`)) return;
+    try {
+      const { error } = await supabase.
+      from('candidates').
+      update({
+        status: 'hired'
+      }).
+      eq('id', candidate.id);
+      if (error) throw error;
+      showToast('Candidato contratado exitosamente', 'success');
+      setTimeout(() => onBack(), 1500); // Volver a la lista después de 1.5s
+    } catch (err: any) {
+      showToast(`Error: ${err.message}`, 'error');
+    }
+  };
   const compatibilityLevel = candidate.compatibility ?
   getCompatibilityLevel(candidate.compatibility) :
   null;
@@ -244,10 +261,21 @@ export function CandidateDetail({ candidate, onBack, onAddNew }: DetailProps) {
 
       {/* Footer de acciones */}
       <div className="flex justify-end gap-4">
-        <button className="px-6 py-2.5 bg-slate-100 text-slate-700 rounded-xl font-bold hover:bg-slate-200 transition-all">
+        <button
+          onClick={() =>
+          showToast(
+            'Funcionalidad de agendar entrevista próximamente',
+            'info'
+          )
+          }
+          className="px-6 py-2.5 bg-slate-100 text-slate-700 rounded-xl font-bold hover:bg-slate-200 transition-all">
+          
           Agendar Entrevista
         </button>
-        <button className="px-6 py-2.5 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 shadow-blue-200 shadow-lg transition-all">
+        <button
+          onClick={handleHireCandidate}
+          className="px-6 py-2.5 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 shadow-blue-200 shadow-lg transition-all">
+          
           Contratar Candidato
         </button>
       </div>

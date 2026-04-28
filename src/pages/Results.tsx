@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   BarChart3Icon,
   TrendingUpIcon,
@@ -6,8 +6,7 @@ import {
   CheckCircle2Icon,
   FilterIcon } from
 'lucide-react';
-import { mockCandidates } from '../data/mockData';
-import { StatusBadge } from '../components/StatusBadge';
+import { supabase } from '../supabase';
 import { ScoreMeter } from '../components/ScoreMeter';
 import {
   getCompatibilityLevel,
@@ -15,249 +14,189 @@ import {
   getCompatibilityColor } from
 '../utils/scoring';
 export function Results() {
-  const [filterStatus, setFilterStatus] = useState<string>('all');
-  const completedCandidates = mockCandidates.filter(
-    (c) => c.status === 'completed'
-  );
-  const filteredResults =
-  filterStatus === 'all' ?
-  completedCandidates :
-  completedCandidates.filter((c) => {
-    if (!c.compatibility) return false;
-    const level = getCompatibilityLevel(c.compatibility);
-    return level === filterStatus;
-  });
-  const avgCompatibility =
-  completedCandidates.length > 0 ?
+  const [results, setResults] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [filterStatus, setFilterStatus] = useState('all');
+  useEffect(() => {
+    loadResults();
+  }, []);
+  const loadResults = async () => {
+    try {
+      setLoading(true);
+      const { data: resultsData } = await supabase.
+      from('results').
+      select('*').
+      order('id', {
+        ascending: false
+      });
+      const { data: candidates } = await supabase.from('candidates').select('*');
+      const { data: tests } = await supabase.from('tests').select('*');
+      const finalData = (resultsData || []).map((r) => {
+        // Buscar candidato por user_name (que contiene el candidateId)
+        const candidate = candidates?.find(
+          (c) => c.id.toString() === (r.user_name || '').toString()
+        );
+        const test = tests?.find(
+          (t) => t.id.toString() === (r.test_id || '').toString()
+        );
+        return {
+          ...r,
+          candidate,
+          test
+        };
+      });
+      setResults(finalData);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+  const getCompatibility = (score: number) => Math.min(100, Math.round(score));
+  const processed = results.map((r) => ({
+    ...r,
+    compatibility: getCompatibility(r.score || 0)
+  }));
+  const avg =
+  processed.length > 0 ?
   Math.round(
-    completedCandidates.reduce(
-      (sum, c) => sum + (c.compatibility || 0),
-      0
-    ) / completedCandidates.length
+    processed.reduce((sum, r) => sum + r.compatibility, 0) /
+    processed.length
   ) :
   0;
-  const highlyRecommended = completedCandidates.filter(
-    (c) => c.compatibility && c.compatibility >= 80
+  const highlyRecommended = processed.filter(
+    (r) => r.compatibility >= 80
   ).length;
-  const recommended = completedCandidates.filter(
-    (c) => c.compatibility && c.compatibility >= 65 && c.compatibility < 80
-  ).length;
-  const withReserves = completedCandidates.filter(
-    (c) => c.compatibility && c.compatibility >= 50 && c.compatibility < 65
-  ).length;
-  const notRecommended = completedCandidates.filter(
-    (c) => c.compatibility && c.compatibility < 50
-  ).length;
+  const withAlerts = processed.filter((r) => r.compatibility < 65).length;
+  const filtered =
+  filterStatus === 'all' ?
+  processed :
+  processed.filter((r) => {
+    const level = getCompatibilityLevel(r.compatibility);
+    return level === filterStatus;
+  });
+  if (loading) {
+    return <div className="p-6">Cargando resultados...</div>;
+  }
   return (
-    <div className="p-6 space-y-6">
-      {/* Header */}
+    <div className="p-6 space-y-6 animate-in fade-in duration-500">
+      {/* HEADER */}
       <div>
         <h1 className="text-2xl font-bold text-gray-900">
           Resultados de Evaluaciones
         </h1>
-        <p className="text-gray-600 mt-1">
-          Análisis consolidado de resultados y compatibilidad
-        </p>
+        <p className="text-gray-500">Datos reales conectados a Supabase</p>
       </div>
 
-      {/* Stats Cards */}
+      {/* STATS */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <div className="bg-white rounded-xl border border-gray-200 p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-600 mb-1">
-                Evaluaciones Completadas
-              </p>
-              <p className="text-3xl font-bold text-gray-900">
-                {completedCandidates.length}
-              </p>
-            </div>
-            <div className="w-12 h-12 rounded-lg bg-blue-50 flex items-center justify-center">
-              <BarChart3Icon className="w-6 h-6 text-blue-600" />
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-xl border border-gray-200 p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-600 mb-1">
-                Compatibilidad Promedio
-              </p>
-              <p className="text-3xl font-bold text-gray-900">
-                {avgCompatibility}%
-              </p>
-            </div>
-            <div className="w-12 h-12 rounded-lg bg-green-50 flex items-center justify-center">
-              <TrendingUpIcon className="w-6 h-6 text-green-600" />
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-xl border border-gray-200 p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-600 mb-1">Muy Recomendables</p>
-              <p className="text-3xl font-bold text-emerald-600">
-                {highlyRecommended}
-              </p>
-            </div>
-            <div className="w-12 h-12 rounded-lg bg-emerald-50 flex items-center justify-center">
-              <CheckCircle2Icon className="w-6 h-6 text-emerald-600" />
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-xl border border-gray-200 p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-600 mb-1">Con Alertas</p>
-              <p className="text-3xl font-bold text-orange-600">
-                {withReserves + notRecommended}
-              </p>
-            </div>
-            <div className="w-12 h-12 rounded-lg bg-orange-50 flex items-center justify-center">
-              <AlertCircleIcon className="w-6 h-6 text-orange-600" />
-            </div>
-          </div>
-        </div>
+        <StatCard
+          title="Evaluaciones"
+          value={processed.length}
+          icon={<BarChart3Icon />} />
+        
+        <StatCard
+          title="Promedio"
+          value={`${avg}%`}
+          icon={<TrendingUpIcon />} />
+        
+        <StatCard
+          title="Muy Recomendados"
+          value={highlyRecommended}
+          icon={<CheckCircle2Icon />} />
+        
+        <StatCard
+          title="Alertas"
+          value={withAlerts}
+          icon={<AlertCircleIcon />} />
+        
       </div>
 
-      {/* Distribution Chart */}
-      <div className="bg-white rounded-xl border border-gray-200 p-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">
-          Distribución de Recomendaciones
-        </h3>
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div className="text-center p-4 bg-emerald-50 rounded-lg border border-emerald-200">
-            <p className="text-3xl font-bold text-emerald-600">
-              {highlyRecommended}
-            </p>
-            <p className="text-sm text-emerald-700 mt-1">Muy Recomendable</p>
-            <p className="text-xs text-emerald-600 mt-1">80-100%</p>
-          </div>
-          <div className="text-center p-4 bg-green-50 rounded-lg border border-green-200">
-            <p className="text-3xl font-bold text-green-600">{recommended}</p>
-            <p className="text-sm text-green-700 mt-1">Recomendable</p>
-            <p className="text-xs text-green-600 mt-1">65-79%</p>
-          </div>
-          <div className="text-center p-4 bg-orange-50 rounded-lg border border-orange-200">
-            <p className="text-3xl font-bold text-orange-600">{withReserves}</p>
-            <p className="text-sm text-orange-700 mt-1">Con Reservas</p>
-            <p className="text-xs text-orange-600 mt-1">50-64%</p>
-          </div>
-          <div className="text-center p-4 bg-red-50 rounded-lg border border-red-200">
-            <p className="text-3xl font-bold text-red-600">{notRecommended}</p>
-            <p className="text-sm text-red-700 mt-1">No Recomendable</p>
-            <p className="text-xs text-red-600 mt-1">0-49%</p>
-          </div>
-        </div>
+      {/* FILTRO */}
+      <div className="bg-white p-4 rounded-xl border flex items-center gap-3 shadow-sm">
+        <FilterIcon className="w-5 h-5 text-gray-400" />
+        <select
+          value={filterStatus}
+          onChange={(e) => setFilterStatus(e.target.value)}
+          className="px-4 py-2 border rounded-lg outline-none focus:ring-2 focus:ring-blue-500">
+          
+          <option value="all">Todos</option>
+          <option value="highly_recommended">Muy Recomendable</option>
+          <option value="recommended">Recomendable</option>
+          <option value="recommended_with_reserves">Con Reservas</option>
+          <option value="not_recommended">No Recomendable</option>
+        </select>
       </div>
 
-      {/* Filter */}
-      <div className="bg-white rounded-xl border border-gray-200 p-4">
-        <div className="flex items-center space-x-4">
-          <FilterIcon className="w-5 h-5 text-gray-400" />
-          <select
-            value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value)}
-            className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-            
-            <option value="all">Todos los resultados</option>
-            <option value="highly_recommended">Muy Recomendable</option>
-            <option value="recommended">Recomendable</option>
-            <option value="recommended_with_reserves">Con Reservas</option>
-            <option value="not_recommended">No Recomendable</option>
-          </select>
-        </div>
-      </div>
+      {/* TABLA */}
+      <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
+        <table className="w-full">
+          <thead className="bg-gray-50 text-xs uppercase text-gray-500">
+            <tr>
+              <th className="px-6 py-3 text-left">Candidato</th>
+              <th className="px-6 py-3 text-left">Test</th>
+              <th className="px-6 py-3 text-left">Score</th>
+              <th className="px-6 py-3 text-left">Compatibilidad</th>
+              <th className="px-6 py-3 text-left">Resultado</th>
+            </tr>
+          </thead>
 
-      {/* Results Table */}
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-gray-50 border-b border-gray-200">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
-                  Candidato
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
-                  Puesto
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
-                  Compatibilidad
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
-                  Recomendación
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
-                  Fecha
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
-              {filteredResults.map((candidate) => {
-                const compatLevel = candidate.compatibility ?
-                getCompatibilityLevel(candidate.compatibility) :
-                null;
-                return (
-                  <tr
-                    key={candidate.id}
-                    className="hover:bg-gray-50 transition-colors">
-                    
+          <tbody className="divide-y">
+            {filtered.length === 0 ?
+            <tr>
+                <td colSpan={5} className="text-center py-10 text-gray-400">
+                  No hay resultados
+                </td>
+              </tr> :
+
+            filtered.map((r) => {
+              const level = getCompatibilityLevel(r.compatibility);
+              return (
+                <tr key={r.id} className="hover:bg-blue-50/40 transition">
                     <td className="px-6 py-4">
-                      <div className="flex items-center space-x-3">
-                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-white font-semibold text-sm">
-                          {candidate.name.
-                          split(' ').
-                          map((n) => n[0]).
-                          join('').
-                          substring(0, 2)}
-                        </div>
-                        <div>
-                          <div className="text-sm font-medium text-gray-900">
-                            {candidate.name}
-                          </div>
-                          <div className="text-sm text-gray-500">
-                            {candidate.email}
-                          </div>
-                        </div>
+                      <div className="font-semibold text-gray-900">
+                        {r.candidate?.name || 'Sin nombre'}
+                      </div>
+                      <div className="text-xs text-gray-500">
+                        {r.candidate?.email}
                       </div>
                     </td>
-                    <td className="px-6 py-4 text-sm text-gray-900">
-                      {candidate.position}
+
+                    <td className="px-6 py-4 text-gray-700">
+                      {r.test?.name || 'Sin test'}
                     </td>
-                    <td className="px-6 py-4">
-                      <div className="w-40">
-                        <ScoreMeter
-                          score={candidate.compatibility || 0}
-                          showLabel={false}
-                          size="sm" />
-                        
-                        <p className="text-sm font-bold text-gray-900 mt-1">
-                          {candidate.compatibility}%
-                        </p>
-                      </div>
+
+                    <td className="px-6 py-4 font-bold">{r.score}</td>
+
+                    <td className="px-6 py-4 w-44">
+                      <ScoreMeter score={r.compatibility} size="sm" />
                     </td>
+
                     <td className="px-6 py-4">
-                      {compatLevel &&
                       <span
-                        className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold ${getCompatibilityColor(compatLevel)}`}>
-                        
-                          {getCompatibilityLabel(compatLevel)}
-                        </span>
-                      }
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-500">
-                      {candidate.evaluationDate}
+                      className={`px-3 py-1 rounded-full text-xs font-semibold ${getCompatibilityColor(level)}`}>
+                      
+                        {getCompatibilityLabel(level)}
+                      </span>
                     </td>
                   </tr>);
 
-              })}
-            </tbody>
-          </table>
-        </div>
+            })
+            }
+          </tbody>
+        </table>
       </div>
+    </div>);
+
+}
+function StatCard({ title, value, icon }: any) {
+  return (
+    <div className="bg-white rounded-xl border p-5 flex justify-between items-center shadow-sm hover:shadow-md transition">
+      <div>
+        <p className="text-sm text-gray-500">{title}</p>
+        <h2 className="text-2xl font-bold text-gray-900">{value}</h2>
+      </div>
+      <div className="text-gray-400">{icon}</div>
     </div>);
 
 }

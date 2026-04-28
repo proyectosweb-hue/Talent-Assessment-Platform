@@ -20,6 +20,7 @@ import {
   ResponsiveContainer,
   Cell } from
 'recharts';
+
 export function Dashboard() {
   const totalCandidates = mockCandidates.length;
   const completedEvaluations = mockCandidates.filter(
@@ -29,12 +30,18 @@ export function Dashboard() {
     (sum, p) => sum + p.activeVacancies,
     0
   );
-  const avgCompatibility = Math.round(
-    mockCandidates.
-    filter((c) => c.compatibility).
-    reduce((sum, c) => sum + (c.compatibility || 0), 0) /
-    mockCandidates.filter((c) => c.compatibility).length
-  );
+
+  const candidatesWithCompat = mockCandidates.filter((c) => c.compatibility);
+  const avgCompatibility =
+  candidatesWithCompat.length > 0 ?
+  Math.round(
+    candidatesWithCompat.reduce(
+      (sum, c) => sum + (c.compatibility || 0),
+      0
+    ) / candidatesWithCompat.length
+  ) :
+  0;
+
   const compatibilityDistribution = [
   {
     range: '0-49',
@@ -56,6 +63,7 @@ export function Dashboard() {
     count: 2,
     color: '#059669'
   }];
+
 
   const testPerformance = [
   {
@@ -83,10 +91,12 @@ export function Dashboard() {
     score: 82
   }];
 
+
   const topCandidates = mockCandidates.
   filter((c) => c.compatibility).
   sort((a, b) => (b.compatibility || 0) - (a.compatibility || 0)).
   slice(0, 5);
+
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
@@ -145,17 +155,8 @@ export function Dashboard() {
           <ResponsiveContainer width="100%" height={250}>
             <BarChart data={compatibilityDistribution}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-              <XAxis
-                dataKey="range"
-                tick={{
-                  fontSize: 12
-                }} />
-              
-              <YAxis
-                tick={{
-                  fontSize: 12
-                }} />
-              
+              <XAxis dataKey="range" />
+              <YAxis />
               <Tooltip />
               <Bar dataKey="count" radius={[8, 8, 0, 0]}>
                 {compatibilityDistribution.map((entry, index) =>
@@ -172,23 +173,10 @@ export function Dashboard() {
             Desempeño por Prueba
           </h3>
           <ResponsiveContainer width="100%" height={250}>
-            <BarChart data={testPerformance} layout="horizontal">
+            <BarChart data={testPerformance} layout="vertical">
               <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-              <XAxis
-                type="number"
-                domain={[0, 100]}
-                tick={{
-                  fontSize: 12
-                }} />
-              
-              <YAxis
-                dataKey="test"
-                type="category"
-                width={80}
-                tick={{
-                  fontSize: 11
-                }} />
-              
+              <XAxis type="number" domain={[0, 100]} />
+              <YAxis dataKey="test" type="category" width={80} />
               <Tooltip />
               <Bar dataKey="score" fill="#3b82f6" radius={[0, 8, 8, 0]} />
             </BarChart>
