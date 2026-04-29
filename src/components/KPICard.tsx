@@ -1,9 +1,8 @@
 import React from 'react';
-import { BoxIcon } from 'lucide-react';
 interface KPICardProps {
   title: string;
   value: string | number;
-  icon: BoxIcon;
+  icon: React.ElementType;
   trend?: {
     value: number;
     isPositive: boolean;

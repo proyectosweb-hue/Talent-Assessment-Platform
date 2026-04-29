@@ -7,20 +7,83 @@ import {
   AlertTriangleIcon,
   AwardIcon } from
 'lucide-react';
-import { KPICard } from '../components/KPICard';
 import { ScoreMeter } from '../components/ScoreMeter';
 import { mockCandidates, mockPositions } from '../data/mockData';
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  Cell } from
-'recharts';
+function InlineKPICard({
+  title,
+  value,
+  icon: Icon,
+  trend,
+  color = 'blue'
 
+
+
+
+
+
+
+
+
+}: {title: string;value: string | number;icon: React.ElementType;trend?: {value: number;isPositive: boolean;};color?: 'blue' | 'green' | 'orange' | 'purple';}) {
+  const colorClasses: Record<string, string> = {
+    blue: 'bg-blue-50 text-blue-600',
+    green: 'bg-green-50 text-green-600',
+    orange: 'bg-orange-50 text-orange-600',
+    purple: 'bg-purple-50 text-purple-600'
+  };
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-md transition-shadow">
+      <div className="flex items-start justify-between">
+        <div className="flex-1">
+          <p className="text-sm font-medium text-gray-600 mb-1">{title}</p>
+          <p className="text-3xl font-bold text-gray-900">{value}</p>
+          {trend &&
+          <p
+            className={`text-sm mt-2 ${trend.isPositive ? 'text-green-600' : 'text-red-600'}`}>
+            
+              {trend.isPositive ? '↑' : '↓'} {Math.abs(trend.value)}% vs mes
+              anterior
+            </p>
+          }
+        </div>
+        <div
+          className={`w-12 h-12 rounded-lg ${colorClasses[color]} flex items-center justify-center`}>
+          
+          <Icon className="w-6 h-6" />
+        </div>
+      </div>
+    </div>);
+
+}
+function SimpleBar({
+  label,
+  value,
+  max,
+  color
+
+
+
+
+
+}: {label: string;value: number;max: number;color: string;}) {
+  return (
+    <div className="flex items-center gap-3">
+      <span className="text-sm text-gray-600 w-16 text-right shrink-0">
+        {label}
+      </span>
+      <div className="flex-1 h-6 bg-gray-100 rounded-full overflow-hidden">
+        <div
+          className="h-full rounded-full transition-all duration-500"
+          style={{
+            width: `${value / max * 100}%`,
+            backgroundColor: color
+          }} />
+        
+      </div>
+      <span className="text-sm font-bold text-gray-700 w-8">{value}</span>
+    </div>);
+
+}
 export function Dashboard() {
   const totalCandidates = mockCandidates.length;
   const completedEvaluations = mockCandidates.filter(
@@ -30,7 +93,6 @@ export function Dashboard() {
     (sum, p) => sum + p.activeVacancies,
     0
   );
-
   const candidatesWithCompat = mockCandidates.filter((c) => c.compatibility);
   const avgCompatibility =
   candidatesWithCompat.length > 0 ?
@@ -41,7 +103,6 @@ export function Dashboard() {
     ) / candidatesWithCompat.length
   ) :
   0;
-
   const compatibilityDistribution = [
   {
     range: '0-49',
@@ -63,7 +124,6 @@ export function Dashboard() {
     count: 2,
     color: '#059669'
   }];
-
 
   const testPerformance = [
   {
@@ -91,12 +151,11 @@ export function Dashboard() {
     score: 82
   }];
 
-
   const topCandidates = mockCandidates.
   filter((c) => c.compatibility).
   sort((a, b) => (b.compatibility || 0) - (a.compatibility || 0)).
   slice(0, 5);
-
+  const maxCount = Math.max(...compatibilityDistribution.map((d) => d.count), 1);
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
@@ -111,7 +170,7 @@ export function Dashboard() {
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <KPICard
+        <InlineKPICard
           title="Total Candidatos"
           value={totalCandidates}
           icon={UsersIcon}
@@ -121,13 +180,13 @@ export function Dashboard() {
             isPositive: true
           }} />
         
-        <KPICard
+        <InlineKPICard
           title="Vacantes Activas"
           value={activeVacancies}
           icon={BriefcaseIcon}
           color="green" />
         
-        <KPICard
+        <InlineKPICard
           title="Evaluaciones Completadas"
           value={completedEvaluations}
           icon={ClipboardCheckIcon}
@@ -137,7 +196,7 @@ export function Dashboard() {
             isPositive: true
           }} />
         
-        <KPICard
+        <InlineKPICard
           title="Compatibilidad Promedio"
           value={`${avgCompatibility}%`}
           icon={TrendingUpIcon}
@@ -145,26 +204,24 @@ export function Dashboard() {
         
       </div>
 
-      {/* Charts Row */}
+      {/* Charts Row - Pure CSS bars instead of recharts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Compatibility Distribution */}
         <div className="bg-white rounded-xl border border-gray-200 p-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">
             Distribución de Compatibilidad
           </h3>
-          <ResponsiveContainer width="100%" height={250}>
-            <BarChart data={compatibilityDistribution}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-              <XAxis dataKey="range" />
-              <YAxis />
-              <Tooltip />
-              <Bar dataKey="count" radius={[8, 8, 0, 0]}>
-                {compatibilityDistribution.map((entry, index) =>
-                <Cell key={`cell-${index}`} fill={entry.color} />
-                )}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
+          <div className="space-y-3">
+            {compatibilityDistribution.map((item) =>
+            <SimpleBar
+              key={item.range}
+              label={item.range}
+              value={item.count}
+              max={maxCount}
+              color={item.color} />
+
+            )}
+          </div>
         </div>
 
         {/* Test Performance */}
@@ -172,15 +229,17 @@ export function Dashboard() {
           <h3 className="text-lg font-semibold text-gray-900 mb-4">
             Desempeño por Prueba
           </h3>
-          <ResponsiveContainer width="100%" height={250}>
-            <BarChart data={testPerformance} layout="vertical">
-              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-              <XAxis type="number" domain={[0, 100]} />
-              <YAxis dataKey="test" type="category" width={80} />
-              <Tooltip />
-              <Bar dataKey="score" fill="#3b82f6" radius={[0, 8, 8, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
+          <div className="space-y-3">
+            {testPerformance.map((item) =>
+            <SimpleBar
+              key={item.test}
+              label={item.test}
+              value={item.score}
+              max={100}
+              color="#3b82f6" />
+
+            )}
+          </div>
         </div>
       </div>
 
