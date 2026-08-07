@@ -6,12 +6,15 @@ import { createClient } from '@supabase/supabase-js';
  * Las credenciales viven aquí como valores por defecto y se pueden sobrescribir
  * desde el archivo `.env` de la raíz del proyecto.
  *
- * Por qué las dos vías: `import.meta.env` solo existe cuando Vite compila el
- * proyecto. En entornos que sirven el código sin ese paso (la vista previa de
- * Magic Patterns, por ejemplo) `import.meta.env` llega como `undefined`, y
- * leerlo directamente rompe la app entera al arrancar. Con los valores por
- * defecto la app siempre conecta, y quien quiera apuntar a otro proyecto solo
- * edita el `.env`.
+ * ⚠️ Ojo con la clave: la URL y la anon key tienen que ser del MISMO proyecto.
+ * La versión anterior de este archivo mezclaba la URL de `ztifzpwzojigbmkhnaix`
+ * con una clave emitida para `dnbvsivbzbvzwqlxczzf`, y Supabase respondía
+ * "Invalid API key" a todo. Si algún día cambias de proyecto, cambia las dos
+ * líneas juntas: el `ref` que va dentro de la clave debe coincidir con la URL.
+ *
+ * Por qué se leen de dos sitios: `import.meta.env` solo existe cuando Vite
+ * compila el proyecto. En entornos que sirven el código sin ese paso llega como
+ * `undefined`, y leerlo directamente rompe la app entera al arrancar.
  *
  * Estas dos credenciales son públicas por diseño: viajan dentro del JavaScript
  * que se descarga en el navegador, y lo que realmente protege los datos son las
@@ -25,12 +28,9 @@ const DEFAULT_SUPABASE_ANON_KEY =
  * Lee las variables del `.env` sin asumir que `import.meta.env` exista.
  *
  * Los nombres se escriben completos y literales a propósito: Vite sustituye
- * `import.meta.env.VITE_ALGO` por su valor en tiempo de compilación buscando
- * ese texto exacto. Con un acceso dinámico (`env[nombre]`) la sustitución no
- * ocurre y el `.env` se ignora en silencio.
- *
- * Donde no hay compilación de Vite, `import.meta.env` es `undefined` y leer una
- * propiedad suya lanza un TypeError: eso es justo lo que atrapa el `catch`.
+ * `import.meta.env.VITE_ALGO` por su valor buscando ese texto exacto. Con un
+ * acceso dinámico (`env[nombre]`) la sustitución no ocurre y el `.env` se
+ * ignora en silencio.
  */
 function readEnvVars(): {url: string;key: string;} {
   try {

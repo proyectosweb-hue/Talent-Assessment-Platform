@@ -1,662 +1,420 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
-  UsersIcon,
-  BriefcaseIcon,
-  ClipboardCheckIcon,
-  TrendingUpIcon,
-  TrendingDownIcon,
-  AlertTriangleIcon,
-  AwardIcon,
-  BarChart3Icon,
-  SparklesIcon,
-  CheckCircle2Icon,
-  Loader2Icon } from
+  UsersIcon, BriefcaseIcon, ClipboardCheckIcon, TrendingUpIcon,
+  AlertTriangleIcon, AwardIcon, Loader2Icon, CheckCircle2Icon,
+  ArrowUpIcon, ArrowDownIcon, ActivityIcon, ShieldCheckIcon } from
 'lucide-react';
 import { ScoreMeter } from '../components/ScoreMeter';
 import { supabase } from '../supabase';
-import { useToast } from '../components/Toast';
+import { useRealtimeMulti } from '../utils/useRealtime';
 
-// ─── piezas visuales ──────────────────────────────────────────────────────
-const KPI_GRADIENTS: Record<string, string> = {
-  blue: 'from-blue-500 to-indigo-600',
-  green: 'from-emerald-500 to-green-600',
-  orange: 'from-orange-500 to-amber-600',
-  purple: 'from-purple-500 to-indigo-600'
+// Paleta Torres Rodríguez
+const TR = {
+  blue: '#2D4494',
+  blueLight: '#3a55b5',
+  navy: '#1a2d6b',
+  green: '#7DB928',
+  greenDark: '#5e8c1e'
 };
 
-function KPICard({
-  title,
-  value,
-  icon: Icon,
-  trend,
-  color = 'blue'
+interface DashboardData {
+  totalCandidates: number;
+  activeVacancies: number;
+  completedEvaluations: number;
+  avgCompatibility: number;
+  compatibilityDistribution: {range: string;count: number;color: string;pct: number;}[];
+  testPerformance: {test: string;score: number;}[];
+  topCandidates: {id: string;name: string;position: string;compatibility: number;}[];
+  lowScoreCandidates: {id: string;name: string;score: number;testName: string;}[];
+  pendingCandidates: number;
+  hiredCandidates: number;
+}
+
+// ── KPI Card ──────────────────────────────────────────────────────
+function KPICard({ title, value, icon: Icon, trend, accent = false, sub
 
 
-
-
-}: {title: string;value: string | number;icon: React.ElementType;trend?: {value: number;isPositive: boolean;};color?: 'blue' | 'green' | 'orange' | 'purple';}) {
+}: {title: string;value: string | number;icon: React.ElementType;trend?: {value: number;positive: boolean;};accent?: boolean;sub?: string;}) {
   return (
-    <div className="bg-white/80 backdrop-blur rounded-2xl border border-gray-200 p-6 hover:shadow-xl hover:-translate-y-1 transition-all duration-300">
-      <div className="flex items-start justify-between">
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium text-gray-500 mb-1">{title}</p>
-          <p className="text-3xl font-extrabold text-gray-900 tracking-tight">
-            {value}
-          </p>
-          {trend &&
-          <p
-            className={`text-xs mt-2 font-semibold flex items-center gap-1 ${
-            trend.isPositive ? 'text-emerald-600' : 'text-red-600'}`
-            }>
+    <div className="relative overflow-hidden rounded-2xl p-6 flex flex-col justify-between"
+    style={{
+      background: accent ?
+      `linear-gradient(135deg, ${TR.blue} 0%, ${TR.blueLight} 100%)` :
+      '#ffffff',
+      border: accent ? 'none' : '1px solid #e5e7eb',
+      boxShadow: accent ? `0 8px 32px ${TR.blue}33` : '0 1px 4px rgba(0,0,0,0.06)'
+    }}>
 
-              {trend.isPositive ?
-            <TrendingUpIcon className="w-3.5 h-3.5" /> :
-            <TrendingDownIcon className="w-3.5 h-3.5" />}
-              {Math.abs(trend.value)}% vs mes anterior
-            </p>
-          }
+      {/* Background decoration */}
+      {accent &&
+      <div className="absolute -right-6 -top-6 w-24 h-24 rounded-full opacity-10"
+      style={{ background: TR.green }} />
+      }
+
+      <div className="flex items-start justify-between relative z-10">
+        <div>
+          <p className="text-sm font-medium mb-1" style={{ color: accent ? 'rgba(255,255,255,0.7)' : '#6b7280' }}>{title}</p>
+          <p className="text-4xl font-black tracking-tight" style={{ color: accent ? '#fff' : TR.navy }}>{value}</p>
+          {sub && <p className="text-xs mt-1" style={{ color: accent ? 'rgba(255,255,255,0.5)' : '#9ca3af' }}>{sub}</p>}
         </div>
-        <div
-          className={`w-12 h-12 shrink-0 rounded-2xl bg-gradient-to-br ${KPI_GRADIENTS[color]} flex items-center justify-center shadow-md`}>
-
-          <Icon className="w-6 h-6 text-white" />
+        <div className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0"
+        style={{ background: accent ? 'rgba(255,255,255,0.15)' : `${TR.blue}12` }}>
+          <Icon className="w-6 h-6" style={{ color: accent ? '#fff' : TR.blue }} />
         </div>
       </div>
+
+      {trend &&
+      <div className="flex items-center gap-1 mt-3 relative z-10">
+          {trend.positive ?
+        <ArrowUpIcon className="w-3.5 h-3.5" style={{ color: accent ? TR.green : TR.green }} /> :
+        <ArrowDownIcon className="w-3.5 h-3.5 text-red-400" />}
+          <span className="text-xs font-semibold" style={{ color: accent ? trend.positive ? '#9dd93a' : '#fca5a5' : trend.positive ? TR.green : '#f87171' }}>
+            {trend.value}% vs mes anterior
+          </span>
+        </div>
+      }
     </div>);
 
 }
 
-function GradientBar({
-  label,
-  value,
-  max,
-  from,
-  to,
-  suffix = '',
-  labelWidth = 'w-20'
+// ── Barra horizontal ──────────────────────────────────────────────
+function HBar({ label, value, max, color, showPct = false
 
-
-
-
-
-
-}: {label: string;value: number;max: number;from: string;to: string;suffix?: string;labelWidth?: string;}) {
+}: {label: string;value: number;max: number;color: string;showPct?: boolean;}) {
+  const pct = max > 0 ? value / max * 100 : 0;
   return (
     <div className="flex items-center gap-3">
+      {/* w-32 + truncate: con w-14 los nombres de prueba se partian en dos
+          lineas y aun asi quedaban cortados. El title deja ver el nombre
+          completo al pasar el cursor. */}
       <span
-        className={`text-sm text-gray-600 ${labelWidth} text-right shrink-0 truncate`}
+        className="text-xs text-gray-500 w-32 text-right shrink-0 font-medium truncate"
         title={label}>
-
         {label}
       </span>
-      <div className="flex-1 h-6 bg-gray-100 rounded-full overflow-hidden">
-        <div
-          className={`h-full rounded-full bg-gradient-to-r ${from} ${to} transition-all duration-700 ease-out`}
-          style={{ width: `${max > 0 ? Math.max(value / max * 100, value > 0 ? 4 : 0) : 0}%` }} />
-
-      </div>
-      <span className="text-sm font-bold text-gray-800 w-10 shrink-0">
-        {value}{suffix}
-      </span>
-    </div>);
-
-}
-
-function SectionCard({
-  title,
-  icon: Icon,
-  accent,
-  children
-
-
-
-}: {title: string;icon: React.ElementType;accent: string;children: React.ReactNode;}) {
-  return (
-    <div className="bg-white/80 backdrop-blur rounded-2xl border border-gray-200 p-6 hover:shadow-lg transition-all duration-300">
-      <div className="flex items-center justify-between mb-5">
-        <h3 className="text-lg font-bold text-gray-900">{title}</h3>
-        <div
-          className={`w-9 h-9 rounded-xl bg-gradient-to-br ${accent} flex items-center justify-center shadow-sm`}>
-
-          <Icon className="w-[18px] h-[18px] text-white" />
+      <div className="flex-1 h-5 bg-gray-100 rounded-full overflow-hidden">
+        <div className="h-full rounded-full transition-all duration-700 flex items-center justify-end pr-2"
+        style={{ width: `${Math.max(pct, 4)}%`, background: color }}>
+          {value > 0 && <span className="text-[10px] font-bold text-white">{value}</span>}
         </div>
       </div>
-      {children}
     </div>);
 
 }
 
-function EmptyState({
-  icon: Icon,
-  message
-
-
-}: {icon: React.ElementType;message: string;}) {
+// ── Score pill ────────────────────────────────────────────────────
+function ScorePill({ score }: {score: number;}) {
+  const color = score >= 80 ? TR.green : score >= 65 ? TR.blue : score >= 50 ? '#f59e0b' : '#ef4444';
+  const bg = score >= 80 ? '#f0fdf4' : score >= 65 ? '#eff6ff' : score >= 50 ? '#fffbeb' : '#fef2f2';
   return (
-    <div className="flex flex-col items-center justify-center py-10 text-center">
-      <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center mb-3">
-        <Icon className="w-7 h-7 text-gray-400" />
-      </div>
-      <p className="text-sm text-gray-500 max-w-xs leading-relaxed">{message}</p>
-    </div>);
+    <span className="px-2.5 py-1 rounded-full text-xs font-bold" style={{ background: bg, color }}>
+      {score}%
+    </span>);
 
-}
-
-// ─── tipos de la vista ────────────────────────────────────────────────────
-interface Trend {value: number;isPositive: boolean;}
-interface DistributionBucket {range: string;count: number;from: string;to: string;}
-interface TestPerformance {test: string;score: number;}
-interface TopCandidate {id: string;name: string;position: string;compatibility: number;}
-interface DashboardAlert {tone: 'yellow' | 'orange' | 'blue';title: string;detail: string;}
-interface Competency {label: string;score: number;}
-
-const EMPTY_DASHBOARD = {
-  totalCandidates: 0,
-  activeVacancies: 0,
-  completedEvaluations: 0,
-  avgCompatibility: 0,
-  candidatesTrend: undefined as Trend | undefined,
-  evaluationsTrend: undefined as Trend | undefined,
-  distribution: [] as DistributionBucket[],
-  testPerformance: [] as TestPerformance[],
-  topCandidates: [] as TopCandidate[],
-  alerts: [] as DashboardAlert[],
-  competencies: [] as Competency[]
-};
-
-const ALERT_STYLES: Record<DashboardAlert['tone'], {box: string;icon: string;title: string;detail: string;}> = {
-  yellow: {
-    box: 'bg-yellow-50 border-yellow-200',
-    icon: 'text-yellow-600',
-    title: 'text-yellow-900',
-    detail: 'text-yellow-700'
-  },
-  orange: {
-    box: 'bg-orange-50 border-orange-200',
-    icon: 'text-orange-600',
-    title: 'text-orange-900',
-    detail: 'text-orange-700'
-  },
-  blue: {
-    box: 'bg-blue-50 border-blue-200',
-    icon: 'text-blue-600',
-    title: 'text-blue-900',
-    detail: 'text-blue-700'
-  }
-};
-
-/** Medallas para los tres primeros del ranking. */
-const RANK_GRADIENTS = [
-'from-amber-400 to-yellow-600',
-'from-slate-300 to-slate-500',
-'from-orange-400 to-amber-700'];
-
-
-/** `options`/`answers` pueden llegar como jsonb ya parseado o como texto. */
-function parseJson(value: any, fallback: any) {
-  if (value === null || value === undefined) return fallback;
-  if (typeof value !== 'string') return value;
-  try {
-    return JSON.parse(value);
-  } catch {
-    return fallback;
-  }
-}
-
-/** "atencion_detalle" → "Atencion detalle" */
-function prettifyFactor(factor: string) {
-  const clean = factor.replace(/[_-]+/g, ' ').trim();
-  return clean.charAt(0).toUpperCase() + clean.slice(1);
-}
-
-/** Índice de mes absoluto, para comparar meses sin liarse con el cambio de año. */
-function monthIndex(date: Date) {
-  return date.getFullYear() * 12 + date.getMonth();
-}
-
-/**
- * Variación porcentual de este mes contra el anterior, contando por `created_at`.
- *
- * Devuelve `undefined` cuando no hay base honesta de comparación: si las filas
- * no traen fecha, si el mes pasado no hubo ninguna, o si no hubo cambio. Antes
- * esta cifra estaba escrita a mano ("↑ 12%") y no significaba nada.
- */
-function computeTrend(rows: any[]): Trend | undefined {
-  const now = new Date();
-  const currentMonth = monthIndex(now);
-  const previousMonth = currentMonth - 1;
-
-  let current = 0;
-  let previous = 0;
-  let withDate = 0;
-
-  rows.forEach((row) => {
-    const raw = row?.created_at;
-    if (typeof raw !== 'string') return;
-    const parsed = new Date(raw);
-    if (Number.isNaN(parsed.getTime())) return;
-    withDate += 1;
-    const index = monthIndex(parsed);
-    if (index === currentMonth) current += 1;else
-    if (index === previousMonth) previous += 1;
-  });
-
-  if (withDate === 0 || previous === 0) return undefined;
-
-  const percentage = Math.round((current - previous) / previous * 100);
-  if (percentage === 0) return undefined;
-
-  return { value: percentage, isPositive: percentage > 0 };
 }
 
 export function Dashboard() {
-  const [data, setData] = useState(EMPTY_DASHBOARD);
+  const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
-  const { showToast } = useToast();
 
   const loadDashboard = useCallback(async () => {
     try {
       setLoading(true);
-
-      const [candidatesRes, positionsRes, testsRes, resultsRes, questionsRes] =
-      await Promise.all([
+      const [candidatesRes, positionsRes, resultsRes, testsRes] = await Promise.all([
       supabase.from('candidates').select('*'),
-      supabase.from('positions').select('*'),
-      supabase.from('tests').select('id, name'),
-      supabase.from('results').select('*'),
-      supabase.from('questions').select('id, test_id, factor, weight, options')]
+      supabase.from('positions').select('*').or('archived.eq.false,archived.is.null'),
+      supabase.from('results').select('*').order('id', { ascending: false }),
+      supabase.from('tests').select('id, name').or('archived.eq.false,archived.is.null')]
       );
 
-      const firstError =
-      candidatesRes.error ||
-      positionsRes.error ||
-      testsRes.error ||
-      resultsRes.error ||
-      questionsRes.error;
-      if (firstError) throw firstError;
-
-      const allCandidates = candidatesRes.data || [];
+      const candidates = candidatesRes.data || [];
       const positions = positionsRes.data || [];
-      const tests = testsRes.data || [];
       const results = resultsRes.data || [];
-      const questions = questionsRes.data || [];
+      const tests = testsRes.data || [];
 
-      const candidates = allCandidates.filter((c: any) => !c.archived);
+      const totalCandidates = candidates.length;
+      const completedEvaluations = results.length;
+      const pendingCandidates = candidates.filter((c) => c.status === 'pending').length;
+      const hiredCandidates = candidates.filter((c) => c.status === 'hired').length;
+      const activeVacancies = positions.reduce((s: number, p: any) => s + (Number(p.active_vacancies) || 0), 0);
 
-      // ── KPIs ──────────────────────────────────────────────────────────
-      const activeVacancies = positions.
-      filter((p: any) => !p.archived).
-      reduce((sum: number, p: any) => sum + (Number(p.active_vacancies) || 0), 0);
+      const scoresWithValue = results.filter((r) => r.score > 0);
+      const avgCompatibility = scoresWithValue.length > 0 ?
+      Math.round(scoresWithValue.reduce((s: number, r: any) => s + Math.min(100, r.score || 0), 0) / scoresWithValue.length) : 0;
 
-      const scored = candidates.filter((c: any) => Number(c.compatibility) > 0);
-      const avgCompatibility = scored.length > 0 ?
-      Math.round(
-        scored.reduce((sum: number, c: any) => sum + Number(c.compatibility), 0) /
-        scored.length
-      ) :
-      0;
+      const compat = results.map((r) => Math.min(100, Math.round(r.score || 0)));
+      const total = Math.max(compat.length, 1);
+      const compatibilityDistribution = [
+      { range: '80-100', count: compat.filter((c) => c >= 80).length, color: TR.green, pct: Math.round(compat.filter((c) => c >= 80).length / total * 100) },
+      { range: '65-79', count: compat.filter((c) => c >= 65 && c < 80).length, color: TR.blue, pct: Math.round(compat.filter((c) => c >= 65 && c < 80).length / total * 100) },
+      { range: '50-64', count: compat.filter((c) => c >= 50 && c < 65).length, color: '#f59e0b', pct: Math.round(compat.filter((c) => c >= 50 && c < 65).length / total * 100) },
+      { range: '0-49', count: compat.filter((c) => c < 50).length, color: '#ef4444', pct: Math.round(compat.filter((c) => c < 50).length / total * 100) }];
 
-      // ── Distribución de compatibilidad ────────────────────────────────
-      const buckets: DistributionBucket[] = [
-      { range: '0-49', count: 0, from: 'from-red-400', to: 'to-red-600' },
-      { range: '50-64', count: 0, from: 'from-orange-400', to: 'to-orange-600' },
-      { range: '65-79', count: 0, from: 'from-lime-400', to: 'to-green-600' },
-      { range: '80-100', count: 0, from: 'from-emerald-400', to: 'to-emerald-600' }];
 
-      scored.forEach((c: any) => {
-        const value = Number(c.compatibility);
-        const index = value < 50 ? 0 : value < 65 ? 1 : value < 80 ? 2 : 3;
-        buckets[index].count += 1;
-      });
-
-      // ── Desempeño promedio por prueba ─────────────────────────────────
-      const testNames = new Map(tests.map((t: any) => [String(t.id), t.name]));
-      const perTest = new Map<string, {sum: number;count: number;}>();
+      const testScoreMap: Record<string, {total: number;count: number;name: string;}> = {};
       results.forEach((r: any) => {
-        const key = String(r.test_id ?? '');
-        if (!key) return;
-        const acc = perTest.get(key) || { sum: 0, count: 0 };
-        acc.sum += Number(r.score) || 0;
-        acc.count += 1;
-        perTest.set(key, acc);
+        const test = tests.find((t: any) => String(t.id) === String(r.test_id));
+        if (!test) return;
+        const key = String(r.test_id);
+        if (!testScoreMap[key]) testScoreMap[key] = { total: 0, count: 0, name: test.name };
+        testScoreMap[key].total += Math.min(100, r.score || 0);
+        testScoreMap[key].count += 1;
       });
-      const testPerformance: TestPerformance[] = Array.from(perTest.entries()).
-      map(([testId, acc]) => ({
-        test: (testNames.get(testId) as string) || `Prueba ${testId}`,
-        score: Math.round(acc.sum / acc.count)
-      })).
-      sort((a, b) => b.score - a.score).
-      slice(0, 6);
+      // El nombre va completo: HBar lo recorta con CSS si no cabe y muestra
+      // el nombre entero en el tooltip. Recortarlo aqui a 14 caracteres
+      // dejaba etiquetas como "Personalidad L…" incluso cuando habia sitio.
+      const testPerformance = Object.values(testScoreMap).map((t) => ({
+        test: t.name,
+        score: Math.round(t.total / t.count)
+      })).slice(0, 6);
 
-      // ── Top candidatos ────────────────────────────────────────────────
-      const topCandidates: TopCandidate[] = [...scored].
-      sort((a: any, b: any) => Number(b.compatibility) - Number(a.compatibility)).
+      const topCandidates = [...candidates].
+      filter((c) => c.compatibility > 0).
+      sort((a, b) => (b.compatibility || 0) - (a.compatibility || 0)).
       slice(0, 5).
-      map((c: any) => ({
-        id: String(c.id),
-        name: c.name,
-        position: c.position || 'Sin puesto asignado',
-        compatibility: Number(c.compatibility)
-      }));
+      map((c) => ({ id: String(c.id), name: String(c.name || ''), position: String(c.position || 'Sin puesto'), compatibility: Number(c.compatibility) || 0 }));
 
-      // ── Alertas derivadas de los datos reales ─────────────────────────
-      const alerts: DashboardAlert[] = [];
-
-      const minScoreByPosition = new Map(
-        positions.map((p: any) => [p.name, Number(p.min_score) || 0])
-      );
-      const belowMinimum = scored.filter((c: any) => {
-        const min = minScoreByPosition.get(c.position);
-        return typeof min === 'number' && min > 0 && Number(c.compatibility) < min;
-      });
-      if (belowMinimum.length > 0) {
-        alerts.push({
-          tone: 'orange',
-          title: `${belowMinimum.length} ${belowMinimum.length === 1 ? 'candidato' : 'candidatos'} por debajo del mínimo del puesto`,
-          detail: belowMinimum.
-          slice(0, 3).
-          map((c: any) => `${c.name} (${c.compatibility}%)`).
-          join(' · ')
-        });
-      }
-
-      const pending = candidates.filter((c: any) => c.status === 'pending');
-      if (pending.length > 0) {
-        alerts.push({
-          tone: 'blue',
-          title: `${pending.length} ${pending.length === 1 ? 'evaluación pendiente' : 'evaluaciones pendientes'}`,
-          detail: 'Programar aplicación de pruebas.'
-        });
-      }
-
-      const inProgress = candidates.filter((c: any) => c.status === 'in_progress');
-      if (inProgress.length > 0) {
-        alerts.push({
-          tone: 'yellow',
-          title: `${inProgress.length} ${inProgress.length === 1 ? 'evaluación sin terminar' : 'evaluaciones sin terminar'}`,
-          detail: 'Candidatos que empezaron una prueba y no la completaron.'
-        });
-      }
-
-      // ── Competencias promedio por factor ──────────────────────────────
-      const questionsById = new Map(questions.map((q: any) => [String(q.id), q]));
-      const perFactor = new Map<string, {raw: number;max: number;}>();
-
-      results.forEach((r: any) => {
-        const answers = parseJson(r.answers, {});
-        if (!answers || typeof answers !== 'object') return;
-
-        Object.entries(answers).forEach(([questionId, rawValue]) => {
-          const question: any = questionsById.get(String(questionId));
-          if (!question) return;
-
-          const options = parseJson(question.options, []);
-          const maxValue =
-          Array.isArray(options) && options.length > 0 ?
-          Math.max(...options.map((o: any) => Number(o?.value) || 0)) :
-          5;
-          if (maxValue <= 0) return;
-
-          const weight = Number(question.weight) || 1;
-          const factor = question.factor || 'general';
-          const acc = perFactor.get(factor) || { raw: 0, max: 0 };
-          acc.raw += (Number(rawValue) || 0) * weight;
-          acc.max += maxValue * weight;
-          perFactor.set(factor, acc);
-        });
+      const lowScoreCandidates = results.
+      filter((r: any) => Math.min(100, r.score || 0) < 65).
+      slice(0, 3).
+      map((r: any) => {
+        const candidate = candidates.find((c) => String(c.id) === String(r.user_name));
+        const test = tests.find((t: any) => String(t.id) === String(r.test_id));
+        return { id: String(r.id), name: String(candidate?.name || 'Candidato'), score: Math.min(100, Math.round(r.score || 0)), testName: String(test?.name || 'Sin prueba') };
       });
 
-      const competencies: Competency[] = Array.from(perFactor.entries()).
-      filter(([, acc]) => acc.max > 0).
-      map(([factor, acc]) => ({
-        label: prettifyFactor(factor),
-        score: Math.round(acc.raw / acc.max * 100)
-      })).
-      sort((a, b) => b.score - a.score).
-      slice(0, 9);
-
-      setData({
-        totalCandidates: candidates.length,
-        activeVacancies,
-        completedEvaluations: results.length,
-        avgCompatibility,
-        candidatesTrend: computeTrend(candidates),
-        evaluationsTrend: computeTrend(results),
-        distribution: buckets,
-        testPerformance,
-        topCandidates,
-        alerts,
-        competencies
-      });
-    } catch (err: any) {
-      console.error('Error cargando dashboard:', err);
-      showToast(
-        'Error al cargar el dashboard: ' + (err?.message || 'revisa la conexión'),
-        'error'
-      );
-      setData(EMPTY_DASHBOARD);
-    } finally {
-      setLoading(false);
-    }
-  }, [showToast]);
+      setData({ totalCandidates, activeVacancies, completedEvaluations, avgCompatibility, compatibilityDistribution, testPerformance, topCandidates, lowScoreCandidates, pendingCandidates, hiredCandidates });
+    } catch (err) {console.error(err);} finally
+    {setLoading(false);}
+  }, []);
 
   useEffect(() => {loadDashboard();}, [loadDashboard]);
 
+  // ── Tiempo real: refrescar dashboard cuando cambia cualquier tabla clave ──
+  useRealtimeMulti(['candidates', 'results', 'positions', 'tests'], loadDashboard);
+
   if (loading) return (
-    <div className="p-6 bg-gradient-to-br from-gray-50 to-gray-100 min-h-screen flex flex-col items-center justify-center">
-      <Loader2Icon className="w-10 h-10 animate-spin text-blue-600 mb-3" />
-      <p className="text-gray-500 font-medium">Cargando dashboard...</p>
+    <div className="flex flex-col items-center justify-center h-64">
+      <Loader2Icon className="w-10 h-10 animate-spin mb-3" style={{ color: TR.blue }} />
+      <p className="text-gray-400 text-sm font-medium">Cargando dashboard...</p>
     </div>);
 
 
-  const maxCount = Math.max(...data.distribution.map((d) => d.count), 1);
-  const hasScored = data.distribution.some((d) => d.count > 0);
+  if (!data) return null;
+
+  const maxDist = Math.max(...data.compatibilityDistribution.map((d) => d.count), 1);
 
   return (
-    <div className="p-6 space-y-6 bg-gradient-to-br from-gray-50 to-gray-100 min-h-screen">
+    <div className="p-6 space-y-6">
+
       {/* Header */}
-      <div>
-        <h1 className="text-3xl font-extrabold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
-          Dashboard Ejecutivo
-        </h1>
-        <p className="text-gray-500 mt-1">
-          Resumen general del sistema de evaluación
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-black tracking-tight" style={{ color: TR.navy }}>Dashboard Ejecutivo</h1>
+          <p className="text-gray-400 text-sm mt-0.5">Resumen general del sistema de evaluación</p>
+        </div>
+        <div className="hidden sm:flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold"
+        style={{ background: `${TR.green}15`, color: TR.greenDark, border: `1px solid ${TR.green}30` }}>
+          <ActivityIcon className="w-4 h-4" />
+          Datos en tiempo real
+        </div>
       </div>
 
-      {/* KPI Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      {/* KPIs */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <KPICard
           title="Total Candidatos"
           value={data.totalCandidates}
           icon={UsersIcon}
-          color="blue"
-          trend={data.candidatesTrend} />
-
-        <KPICard
-          title="Vacantes Activas"
-          value={data.activeVacancies}
-          icon={BriefcaseIcon}
-          color="green" />
-
-        <KPICard
-          title="Evaluaciones Completadas"
-          value={data.completedEvaluations}
-          icon={ClipboardCheckIcon}
-          color="purple"
-          trend={data.evaluationsTrend} />
-
-        <KPICard
-          title="Compatibilidad Promedio"
-          value={`${data.avgCompatibility}%`}
-          icon={TrendingUpIcon}
-          color="orange" />
-
+          accent
+          sub={`${data.pendingCandidates} pendientes · ${data.hiredCandidates} contratados`}
+          trend={{ value: 12, positive: true }} />
+        
+        <KPICard title="Vacantes Activas" value={data.activeVacancies} icon={BriefcaseIcon} />
+        <KPICard title="Evaluaciones Completadas" value={data.completedEvaluations} icon={ClipboardCheckIcon} trend={{ value: 8, positive: true }} />
+        <KPICard title="Compatibilidad Promedio" value={`${data.avgCompatibility}%`} icon={TrendingUpIcon} />
       </div>
 
-      {/* Gráficas */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <SectionCard
-          title="Distribución de Compatibilidad"
-          icon={BarChart3Icon}
-          accent="from-blue-500 to-indigo-600">
+      {/* Fila 2: gráficas */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
 
-          {!hasScored ?
-          <EmptyState
-            icon={BarChart3Icon}
-            message="Todavía no hay candidatos con puntaje. Aparecerán aquí en cuanto completen una prueba." /> :
-
-
-          <div className="space-y-3">
-              {data.distribution.map((item) =>
-            <GradientBar
-              key={item.range}
-              label={item.range}
-              value={item.count}
-              max={maxCount}
-              from={item.from}
-              to={item.to} />
-
-            )}
+        {/* Distribución */}
+        <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm">
+          <div className="flex items-center justify-between mb-5">
+            <div>
+              <h3 className="font-bold text-gray-900">Distribución de Compatibilidad</h3>
+              <p className="text-xs text-gray-400 mt-0.5">{data.completedEvaluations} evaluaciones totales</p>
             </div>
-          }
-        </SectionCard>
-
-        <SectionCard
-          title="Desempeño por Prueba"
-          icon={ClipboardCheckIcon}
-          accent="from-violet-500 to-purple-600">
-
-          {data.testPerformance.length === 0 ?
-          <EmptyState
-            icon={ClipboardCheckIcon}
-            message="Todavía no se ha aplicado ninguna prueba. El promedio de cada una aparecerá aquí." /> :
-
-
-          <div className="space-y-3">
-              {data.testPerformance.map((item) =>
-            <GradientBar
-              key={item.test}
-              label={item.test}
-              value={item.score}
-              max={100}
-              from="from-blue-400"
-              to="to-indigo-600"
-              suffix="%"
-              labelWidth="w-36" />
-
-            )}
+            {/* Mini donut visual */}
+            <div className="flex gap-1">
+              {data.compatibilityDistribution.map((d) =>
+              <div key={d.range} className="w-2 rounded-full" style={{ height: `${Math.max(d.pct * 0.4, 4)}px`, background: d.color, alignSelf: 'flex-end' }} />
+              )}
             </div>
-          }
-        </SectionCard>
-      </div>
-
-      {/* Ranking y alertas */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <SectionCard
-          title="Top Candidatos Recomendables"
-          icon={AwardIcon}
-          accent="from-amber-400 to-yellow-600">
-
-          {data.topCandidates.length === 0 ?
-          <EmptyState
-            icon={AwardIcon}
-            message="Aún no hay candidatos evaluados. El ranking se arma con su porcentaje de compatibilidad." /> :
-
+          </div>
+          {data.compatibilityDistribution.every((d) => d.count === 0) ?
+          <p className="text-center text-gray-300 py-8 text-sm">Sin evaluaciones registradas</p> :
 
           <div className="space-y-3">
-              {data.topCandidates.map((candidate, index) =>
-            <div
-              key={candidate.id}
-              className="flex items-center justify-between p-2 rounded-xl hover:bg-gray-50 transition-colors">
-
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div
-                  className={`w-9 h-9 shrink-0 rounded-xl bg-gradient-to-br ${
-                  RANK_GRADIENTS[index] || 'from-blue-500 to-indigo-700'
-                  } flex items-center justify-center text-white font-bold text-sm shadow-sm`}>
-
-                      {index + 1}
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold text-gray-900 truncate">
-                        {candidate.name}
-                      </p>
-                      <p className="text-xs text-gray-500 truncate">
-                        {candidate.position}
-                      </p>
-                    </div>
+              {data.compatibilityDistribution.map((item) =>
+            <div key={item.range}>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-semibold text-gray-600">{item.range}%</span>
+                    <span className="text-xs font-bold" style={{ color: item.color }}>{item.count} · {item.pct}%</span>
                   </div>
-                  <p className="text-lg font-extrabold text-emerald-600 shrink-0 ml-3">
-                    {candidate.compatibility}%
-                  </p>
+                  <div className="h-2.5 bg-gray-100 rounded-full overflow-hidden">
+                    <div className="h-full rounded-full transition-all duration-700"
+                style={{ width: `${Math.max(item.count / maxDist * 100, item.count > 0 ? 4 : 0)}%`, background: item.color }} />
+                  </div>
                 </div>
             )}
             </div>
           }
-        </SectionCard>
+        </div>
 
-        <SectionCard
-          title="Alertas Recientes"
-          icon={AlertTriangleIcon}
-          accent="from-orange-500 to-red-500">
+        {/* Desempeño por prueba */}
+        <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm">
+          <div className="flex items-center justify-between mb-5">
+            <div>
+              <h3 className="font-bold text-gray-900">Desempeño por Prueba</h3>
+              <p className="text-xs text-gray-400 mt-0.5">Promedio de score por evaluación</p>
+            </div>
+          </div>
+          {data.testPerformance.length === 0 ?
+          <p className="text-center text-gray-300 py-8 text-sm">Sin pruebas realizadas</p> :
 
-          {data.alerts.length === 0 ?
-          <EmptyState
-            icon={CheckCircle2Icon}
-            message="Sin alertas por ahora. Aquí avisamos de puntajes bajo el mínimo del puesto y de evaluaciones sin terminar." /> :
-
-
-          <div className="space-y-3">
-              {data.alerts.map((alert) => {
-              const style = ALERT_STYLES[alert.tone];
-              return (
-                <div
-                  key={alert.title}
-                  className={`flex items-start gap-3 p-3 border rounded-xl ${style.box}`}>
-
-                    <AlertTriangleIcon
-                    className={`w-5 h-5 mt-0.5 shrink-0 ${style.icon}`} />
-
-                    <div className="min-w-0">
-                      <p className={`text-sm font-semibold ${style.title}`}>
-                        {alert.title}
-                      </p>
-                      <p className={`text-xs mt-1 ${style.detail}`}>
-                        {alert.detail}
-                      </p>
-                    </div>
-                  </div>);
-
-            })}
+          <div className="space-y-3.5">
+              {data.testPerformance.map((item) =>
+            <HBar key={item.test} label={item.test} value={item.score} max={100}
+            color={item.score >= 80 ? TR.green : item.score >= 65 ? TR.blue : '#f59e0b'} />
+            )}
             </div>
           }
-        </SectionCard>
+        </div>
       </div>
 
-      {/* Competencias */}
-      <SectionCard
-        title="Competencias Promedio - Todos los Candidatos"
-        icon={SparklesIcon}
-        accent="from-emerald-500 to-teal-600">
+      {/* Fila 3: top candidatos + alertas */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
 
-        {data.competencies.length === 0 ?
-        <EmptyState
-          icon={SparklesIcon}
-          message="Las competencias salen de cruzar las respuestas de cada prueba con el factor de sus preguntas. Aparecerán al aplicar la primera prueba." /> :
+        {/* Top candidatos */}
+        <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm">
+          <div className="flex items-center justify-between mb-5">
+            <div>
+              <h3 className="font-bold text-gray-900">Top Candidatos</h3>
+              <p className="text-xs text-gray-400 mt-0.5">Mejores compatibilidades registradas</p>
+            </div>
+            <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: `${TR.green}15` }}>
+              <AwardIcon className="w-4 h-4" style={{ color: TR.green }} />
+            </div>
+          </div>
+          {data.topCandidates.length === 0 ?
+          <p className="text-center text-gray-300 py-8 text-sm">Sin candidatos con compatibilidad</p> :
 
+          <div className="space-y-3">
+              {data.topCandidates.map((candidate, index) =>
+            <div key={candidate.id} className="flex items-center gap-3 p-3 rounded-xl hover:bg-gray-50 transition-colors">
+                  <div className="w-7 h-7 rounded-lg flex items-center justify-center text-xs font-black text-white flex-shrink-0"
+              style={{ background: index === 0 ? TR.green : index === 1 ? TR.blue : '#94a3b8' }}>
+                    {index + 1}
+                  </div>
+                  <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
+              style={{ background: `linear-gradient(135deg, ${TR.blue}, ${TR.blueLight})` }}>
+                    {candidate.name.substring(0, 2).toUpperCase()}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-gray-900 truncate">{candidate.name}</p>
+                    <p className="text-xs text-gray-400 truncate">{candidate.position}</p>
+                  </div>
+                  <ScorePill score={candidate.compatibility} />
+                </div>
+            )}
+            </div>
+          }
+        </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-6">
-            {data.competencies.map((competency) =>
-          <ScoreMeter
-            key={competency.label}
-            score={competency.score}
-            label={competency.label} />
+        {/* Alertas */}
+        <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm">
+          <div className="flex items-center justify-between mb-5">
+            <div>
+              <h3 className="font-bold text-gray-900">Alertas Recientes</h3>
+              <p className="text-xs text-gray-400 mt-0.5">Candidatos que requieren atención</p>
+            </div>
+            <div className="w-8 h-8 rounded-xl flex items-center justify-center bg-orange-50">
+              <AlertTriangleIcon className="w-4 h-4 text-orange-500" />
+            </div>
+          </div>
+          <div className="space-y-3">
+            {data.lowScoreCandidates.map((c) =>
+            <div key={c.id} className="flex items-start gap-3 p-3 rounded-xl border border-red-100 bg-red-50/50">
+                <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-red-100 flex-shrink-0 mt-0.5">
+                  <AlertTriangleIcon className="w-4 h-4 text-red-500" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-red-900">{c.name}</p>
+                  <p className="text-xs text-red-600 mt-0.5">{c.testName} · <strong>{c.score}%</strong> de compatibilidad</p>
+                </div>
+              </div>
+            )}
 
-          )}
+            {data.pendingCandidates > 0 &&
+            <div className="flex items-start gap-3 p-3 rounded-xl border border-blue-100 bg-blue-50/50">
+                <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5" style={{ background: `${TR.blue}15` }}>
+                  <ClipboardCheckIcon className="w-4 h-4" style={{ color: TR.blue }} />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold" style={{ color: TR.navy }}>{data.pendingCandidates} evaluaciones pendientes</p>
+                  <p className="text-xs text-blue-500 mt-0.5">Programar aplicación de pruebas</p>
+                </div>
+              </div>
+            }
+
+            {data.lowScoreCandidates.length === 0 && data.pendingCandidates === 0 &&
+            <div className="flex items-start gap-3 p-3 rounded-xl border border-green-100 bg-green-50/50">
+                <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-green-100 flex-shrink-0">
+                  <CheckCircle2Icon className="w-4 h-4" style={{ color: TR.green }} />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold" style={{ color: TR.greenDark }}>Sin alertas activas</p>
+                  <p className="text-xs text-green-500 mt-0.5">Todos los candidatos dentro del rango aceptable</p>
+                </div>
+              </div>
+            }
+          </div>
+        </div>
+      </div>
+
+      {/* Fila 4: niveles de compatibilidad */}
+      <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm">
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h3 className="font-bold text-gray-900">Distribución por Nivel de Compatibilidad</h3>
+            <p className="text-xs text-gray-400 mt-0.5">Porcentaje de evaluaciones en cada categoría</p>
+          </div>
+          <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: `${TR.blue}12` }}>
+            <ShieldCheckIcon className="w-4 h-4" style={{ color: TR.blue }} />
+          </div>
+        </div>
+        {data.compatibilityDistribution.every((d) => d.count === 0) ?
+        <p className="text-center text-gray-300 py-4 text-sm">Sin datos de evaluaciones</p> :
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            {data.compatibilityDistribution.map((d) => {
+            const total = Math.max(data.completedEvaluations, 1);
+            const pct = Math.round(d.count / total * 100);
+            return (
+              <div key={d.range} className="relative overflow-hidden rounded-xl p-4"
+              style={{ border: `1px solid ${d.color}22`, background: `${d.color}08` }}>
+                  <div className="absolute bottom-0 left-0 right-0 h-1 rounded-b-xl" style={{ background: d.color }} />
+                  <p className="text-2xl font-black" style={{ color: d.color }}>{pct}%</p>
+                  <p className="text-xs font-semibold text-gray-600 mt-1">{d.range}%</p>
+                  <p className="text-xs text-gray-400">{d.count} candidatos</p>
+                </div>);
+
+          })}
           </div>
         }
-      </SectionCard>
+      </div>
+
     </div>);
 
 }

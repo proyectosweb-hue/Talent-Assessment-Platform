@@ -5,26 +5,21 @@ interface StatusBadgeProps {
   status?: CandidateStatus | string;
   scoreLevel?: ScoreLevel;
 }
-export function StatusBadge({ status, scoreLevel }: StatusBadgeProps) {
+export function StatusBadge({
+  status,
+  scoreLevel
+}: StatusBadgeProps) {
   if (scoreLevel) {
-    return (
-      <span
-        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${getScoreColor(scoreLevel)}`}>
-        
+    return <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${getScoreColor(scoreLevel)}`}>
         {getScoreLevelLabel(scoreLevel)}
-      </span>);
-
+      </span>;
   }
   if (!status) return null;
-  // Map that supports both original keys AND Supabase DB values
-  const statusConfig: Record<
-    string,
-    {
-      label: string;
-      className: string;
-    }> =
-  {
-    // Original system values
+  const statusConfig: Record<string, {
+    label: string;
+    className: string;
+  }> = {
+    // Minúsculas (valores del sistema)
     pending: {
       label: 'Pendiente',
       className: 'bg-gray-100 text-gray-700'
@@ -41,7 +36,19 @@ export function StatusBadge({ status, scoreLevel }: StatusBadgeProps) {
       label: 'Rechazado',
       className: 'bg-red-100 text-red-700'
     },
-    // Supabase DB values (English)
+    hired: {
+      label: 'Contratado',
+      className: 'bg-emerald-100 text-emerald-700'
+    },
+    active: {
+      label: 'Activo',
+      className: 'bg-green-100 text-green-700'
+    },
+    inactive: {
+      label: 'Inactivo',
+      className: 'bg-gray-100 text-gray-700'
+    },
+    // Mayúsculas (valores de Supabase DB)
     Qualified: {
       label: 'Calificado',
       className: 'bg-emerald-100 text-emerald-700'
@@ -56,16 +63,7 @@ export function StatusBadge({ status, scoreLevel }: StatusBadgeProps) {
     },
     Hired: {
       label: 'Contratado',
-      className: 'bg-green-100 text-green-700'
-    },
-    // Common alternatives
-    active: {
-      label: 'Activo',
-      className: 'bg-green-100 text-green-700'
-    },
-    inactive: {
-      label: 'Inactivo',
-      className: 'bg-gray-100 text-gray-700'
+      className: 'bg-emerald-100 text-emerald-700'
     },
     Open: {
       label: 'Abierto',
@@ -81,19 +79,12 @@ export function StatusBadge({ status, scoreLevel }: StatusBadgeProps) {
     }
   };
   const config = statusConfig[status];
-  // Fallback for any unknown status value - never crash
   if (!config) {
-    return (
-      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-700">
-        {status}
-      </span>);
-
+    return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-700">
+        {String(status)}
+      </span>;
   }
-  return (
-    <span
-      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${config.className}`}>
-      
+  return <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${config.className}`}>
       {config.label}
-    </span>);
-
+    </span>;
 }

@@ -1,6 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { XIcon, BriefcaseIcon, SaveIcon } from 'lucide-react';
+import { XIcon, BriefcaseIcon, SaveIcon, Loader2Icon } from 'lucide-react';
 import { PositionLevel, Position } from '../types';
+const TR = {
+  blue: '#2D4494',
+  navy: '#1a2d6b',
+  green: '#7DB928',
+  greenDark: '#5e8c1e'
+};
 interface PositionFormModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -16,44 +22,41 @@ interface PositionFormModalProps {
 const LEVEL_OPTIONS: {
   value: PositionLevel;
   label: string;
-}[] = [
-{
+  color: string;
+  bg: string;
+}[] = [{
   value: 'operative',
-  label: 'Operativo'
-},
-{
+  label: 'Operativo',
+  color: '#64748b',
+  bg: '#f1f5f9'
+}, {
   value: 'administrative',
-  label: 'Administrativo'
-},
-{
+  label: 'Administrativo',
+  color: TR.blue,
+  bg: `${TR.blue}12`
+}, {
   value: 'sales',
-  label: 'Ventas'
-},
-{
+  label: 'Ventas',
+  color: '#d97706',
+  bg: '#fffbeb'
+}, {
   value: 'supervisor',
-  label: 'Supervisor'
-},
-{
+  label: 'Supervisor',
+  color: TR.green,
+  bg: `${TR.green}12`
+}, {
   value: 'management',
-  label: 'Gerencia'
-},
-{
+  label: 'Gerencia',
+  color: TR.navy,
+  bg: `${TR.navy}12`
+}, {
   value: 'executive',
-  label: 'Ejecutivo'
+  label: 'Ejecutivo',
+  color: '#7c3aed',
+  bg: '#f5f3ff'
 }];
-
-const AREA_SUGGESTIONS = [
-'Comercial',
-'Operaciones',
-'Recursos Humanos',
-'Tecnología',
-'Finanzas',
-'Marketing',
-'Logística',
-'Atención al Cliente',
-'Administración',
-'Legal'];
-
+const AREA_SUGGESTIONS = ['Comercial', 'Operaciones', 'Recursos Humanos', 'Tecnología', 'Finanzas', 'Marketing', 'Logística', 'Atención al Cliente', 'Administración', 'Legal'];
+const inputClass = "w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm outline-none transition-all bg-gray-50 focus:bg-white focus:border-blue-400 focus:ring-2 focus:ring-blue-100 placeholder:text-gray-300 text-gray-900";
 export function PositionFormModal({
   isOpen,
   onClose,
@@ -104,238 +107,126 @@ export function PositionFormModal({
       setLoading(false);
     }
   };
-  const filteredSuggestions = AREA_SUGGESTIONS.filter(
-    (s) =>
-    s.toLowerCase().includes(formData.area.toLowerCase()) &&
-    formData.area.length > 0
-  );
+  const filteredSuggestions = AREA_SUGGESTIONS.filter((s) => s.toLowerCase().includes(formData.area.toLowerCase()) && formData.area.length > 0);
   if (!isOpen) return null;
-  return (
-    <div
-      className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50"
-      onClick={onClose}>
-      
-      <div
-        className="bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden"
-        onClick={(e) => e.stopPropagation()}>
-        
+  return <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50" onClick={onClose}>
+      <div className="bg-white rounded-3xl shadow-2xl max-w-lg w-full overflow-hidden" onClick={(e) => e.stopPropagation()}>
+
         {/* Header */}
-        <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-6 py-5 flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
+        <div className="relative px-7 py-6 flex items-center justify-between" style={{
+        background: `linear-gradient(135deg, ${TR.navy}, ${TR.blue})`
+      }}>
+          <div className="absolute -right-8 -top-8 w-32 h-32 rounded-full opacity-10 bg-white" />
+          <div className="absolute right-20 bottom-0 w-16 h-16 rounded-full opacity-5 bg-white" />
+          <div className="flex items-center gap-3 relative z-10">
+            <div className="w-11 h-11 rounded-xl flex items-center justify-center bg-white/15">
               <BriefcaseIcon className="w-5 h-5 text-white" />
             </div>
             <div>
-              <h2 className="text-xl font-bold text-white">
-                {isEditing ? 'Editar Puesto' : 'Nuevo Puesto'}
-              </h2>
-              <p className="text-blue-200 text-sm">
-                {isEditing ?
-                'Modificar datos del puesto' :
-                'Guardar en Supabase'}
-              </p>
+              <h2 className="text-lg font-black text-white">{isEditing ? 'Editar Puesto' : 'Nuevo Puesto'}</h2>
+              <p className="text-white/50 text-xs mt-0.5">{isEditing ? 'Modificar datos del puesto' : 'Registrar nueva posición'}</p>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="p-2 hover:bg-white/20 rounded-lg transition-colors">
-            
-            <XIcon className="w-5 h-5 text-white" />
+          <button onClick={onClose} className="p-2 rounded-xl bg-white/10 hover:bg-white/20 transition-colors relative z-10">
+            <XIcon className="w-4 h-4 text-white" />
           </button>
         </div>
 
         {/* Form */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-5">
-          {/* Nombre */}
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-              Nombre del Puesto <span className="text-red-500">*</span>
-            </label>
-            <input
-              type="text"
-              required
-              value={formData.name}
-              onChange={(e) =>
+        <form onSubmit={handleSubmit}>
+          <div className="px-7 py-5 space-y-4 max-h-[460px] overflow-y-auto">
+
+            {/* Nombre */}
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-gray-400 mb-1.5">Nombre del Puesto *</label>
+              <input type="text" required value={formData.name} onChange={(e) => setFormData({
+              ...formData,
+              name: e.target.value
+            })} className={inputClass} placeholder="Ej: Gerente de Ventas" />
+            </div>
+
+            {/* Área con sugerencias */}
+            <div className="relative">
+              <label className="block text-xs font-bold uppercase tracking-wider text-gray-400 mb-1.5">Área *</label>
+              <input type="text" required value={formData.area} onChange={(e) => {
               setFormData({
                 ...formData,
-                name: e.target.value
-              })
-              }
-              className="w-full px-4 py-2.5 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all text-gray-900 placeholder-gray-400"
-              placeholder="Ej: Gerente de Ventas" />
-            
-          </div>
-
-          {/* Área con sugerencias */}
-          <div className="relative">
-            <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-              Área <span className="text-red-500">*</span>
-            </label>
-            <input
-              type="text"
-              required
-              value={formData.area}
-              onChange={(e) => {
+                area: e.target.value
+              });
+              setShowAreaSuggestions(true);
+            }} onFocus={() => setShowAreaSuggestions(true)} onBlur={() => setTimeout(() => setShowAreaSuggestions(false), 150)} className={inputClass} placeholder="Ej: Comercial, Operaciones, RRHH" />
+              {showAreaSuggestions && filteredSuggestions.length > 0 && <ul className="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-xl overflow-hidden">
+                  {filteredSuggestions.map((s) => <li key={s} onMouseDown={() => {
                 setFormData({
                   ...formData,
-                  area: e.target.value
+                  area: s
                 });
-                setShowAreaSuggestions(true);
-              }}
-              onFocus={() => setShowAreaSuggestions(true)}
-              onBlur={() =>
-              setTimeout(() => setShowAreaSuggestions(false), 150)
-              }
-              className="w-full px-4 py-2.5 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all text-gray-900 placeholder-gray-400"
-              placeholder="Ej: Comercial, Operaciones, RRHH" />
-            
-            {showAreaSuggestions && filteredSuggestions.length > 0 &&
-            <ul className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
-                {filteredSuggestions.map((s) =>
-              <li
-                key={s}
-                onMouseDown={() => {
-                  setFormData({
-                    ...formData,
-                    area: s
-                  });
-                  setShowAreaSuggestions(false);
-                }}
-                className="px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 cursor-pointer transition-colors">
-                
-                    {s}
-                  </li>
-              )}
-              </ul>
-            }
-          </div>
-
-          {/* Nivel */}
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-2">
-              Nivel del Puesto <span className="text-red-500">*</span>
-            </label>
-            <div className="grid grid-cols-3 gap-2">
-              {LEVEL_OPTIONS.map((opt) =>
-              <button
-                key={opt.value}
-                type="button"
-                onClick={() =>
-                setFormData({
-                  ...formData,
-                  level: opt.value
-                })
-                }
-                className={`px-3 py-2 rounded-xl text-xs font-semibold border-2 transition-all ${formData.level === opt.value ? 'border-blue-500 bg-blue-50 text-blue-700 shadow-sm' : 'border-gray-200 bg-gray-50 text-gray-500 hover:border-gray-300 hover:bg-gray-100'}`}>
-                
-                  {opt.label}
-                </button>
-              )}
+                setShowAreaSuggestions(false);
+              }} className="px-4 py-2.5 text-sm text-gray-700 hover:bg-blue-50 cursor-pointer transition-colors">
+                      {s}
+                    </li>)}
+                </ul>}
             </div>
-          </div>
 
-          {/* Puntaje y Vacantes */}
-          <div className="grid grid-cols-2 gap-4">
+            {/* Nivel */}
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-                Puntaje Mínimo <span className="text-red-500">*</span>
-              </label>
-              <div className="relative">
-                <input
-                  type="number"
-                  required
-                  min="0"
-                  max="100"
-                  value={formData.minScore}
-                  onChange={(e) =>
-                  setFormData({
-                    ...formData,
-                    minScore: e.target.value
-                  })
-                  }
-                  className="w-full px-4 py-2.5 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all text-gray-900 pr-12" />
-                
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm font-medium">
-                  /100
-                </span>
-              </div>
-              <div className="mt-1.5 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-gradient-to-r from-blue-400 to-blue-600 rounded-full transition-all duration-300"
-                  style={{
-                    width: `${Math.min(Number(formData.minScore), 100)}%`
-                  }} />
-                
+              <label className="block text-xs font-bold uppercase tracking-wider text-gray-400 mb-2">Nivel del Puesto *</label>
+              <div className="grid grid-cols-3 gap-2">
+                {LEVEL_OPTIONS.map((opt) => <button key={opt.value} type="button" onClick={() => setFormData({
+                ...formData,
+                level: opt.value
+              })} className="px-3 py-2.5 rounded-xl text-xs font-bold border-2 transition-all" style={{
+                borderColor: formData.level === opt.value ? opt.color : '#e5e7eb',
+                background: formData.level === opt.value ? opt.bg : '#f9fafb',
+                color: formData.level === opt.value ? opt.color : '#9ca3af'
+              }}>
+                    {opt.label}
+                  </button>)}
               </div>
             </div>
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-                Vacantes Activas <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="number"
-                required
-                min="1"
-                value={formData.activeVacancies}
-                onChange={(e) =>
-                setFormData({
+
+            {/* Puntaje + Vacantes */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-gray-400 mb-1.5">Puntaje Mínimo *</label>
+                <div className="relative">
+                  <input type="number" required min="0" max="100" value={formData.minScore} onChange={(e) => setFormData({
                   ...formData,
-                  activeVacancies: e.target.value
-                })
-                }
-                className="w-full px-4 py-2.5 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all text-gray-900" />
-              
+                  minScore: e.target.value
+                })} className={`${inputClass} pr-12`} />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs font-bold">/100</span>
+                </div>
+                {/* Mini barra */}
+                <div className="mt-1.5 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                  <div className="h-full rounded-full transition-all duration-300" style={{
+                  width: `${Math.min(Number(formData.minScore), 100)}%`,
+                  background: `linear-gradient(90deg, ${TR.blue}, ${TR.green})`
+                }} />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-gray-400 mb-1.5">Vacantes Activas *</label>
+                <input type="number" required min="1" value={formData.activeVacancies} onChange={(e) => setFormData({
+                ...formData,
+                activeVacancies: e.target.value
+              })} className={inputClass} />
+              </div>
             </div>
           </div>
 
-          {/* Acciones */}
-          <div className="flex items-center justify-end space-x-3 pt-2 border-t border-gray-100">
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={loading}
-              className="px-5 py-2.5 bg-white border border-gray-300 rounded-xl hover:bg-gray-50 transition-colors font-semibold text-gray-700 text-sm disabled:opacity-50">
-              
+          {/* Footer */}
+          <div className="px-7 py-4 border-t border-gray-100 flex items-center justify-between gap-3 bg-gray-50/50">
+            <button type="button" onClick={onClose} disabled={loading} className="px-5 py-2.5 border border-gray-200 rounded-xl font-semibold text-sm text-gray-600 hover:bg-gray-100 transition-colors disabled:opacity-50">
               Cancelar
             </button>
-            <button
-              type="submit"
-              disabled={loading}
-              className="flex items-center space-x-2 px-5 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors font-semibold text-sm shadow-md disabled:opacity-70">
-              
-              {loading ?
-              <>
-                  <svg
-                  className="w-4 h-4 animate-spin"
-                  fill="none"
-                  viewBox="0 0 24 24">
-                  
-                    <circle
-                    className="opacity-25"
-                    cx="12"
-                    cy="12"
-                    r="10"
-                    stroke="currentColor"
-                    strokeWidth="4" />
-                  
-                    <path
-                    className="opacity-75"
-                    fill="currentColor"
-                    d="M4 12a8 8 0 018-8v8H4z" />
-                  
-                  </svg>
-                  <span>Guardando...</span>
-                </> :
-
-              <>
-                  <SaveIcon className="w-4 h-4" />
-                  <span>{isEditing ? 'Actualizar' : 'Crear Puesto'}</span>
-                </>
-              }
+            <button type="submit" disabled={loading} className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm text-white shadow-md disabled:opacity-70 transition-all hover:opacity-90" style={{
+            background: `linear-gradient(135deg, ${TR.green}, ${TR.greenDark})`,
+            boxShadow: `0 4px 12px ${TR.green}40`
+          }}>
+              {loading ? <><Loader2Icon className="w-4 h-4 animate-spin" /> Guardando...</> : <><SaveIcon className="w-4 h-4" /> {isEditing ? 'Actualizar' : 'Crear Puesto'}</>}
             </button>
           </div>
         </form>
       </div>
-    </div>);
-
+    </div>;
 }

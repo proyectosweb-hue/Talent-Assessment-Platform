@@ -2,7 +2,8 @@ export type CandidateStatus =
 'pending' |
 'in_progress' |
 'completed' |
-'rejected';
+'rejected' |
+'hired';
 
 export type CompatibilityLevel =
 'not_recommended' |
@@ -35,6 +36,7 @@ export interface Candidate {
   photo?: string;
   compatibility?: number;
   recommendation?: CompatibilityLevel;
+  archived?: boolean;
 }
 
 export interface TestResult {

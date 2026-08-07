@@ -1,632 +1,480 @@
-import React, { useCallback, useEffect, useState } from 'react';
-
+import React, { useCallback, useEffect, useState, useRef } from 'react';
 import {
-  FileTextIcon,
-  DownloadIcon,
-  PrinterIcon,
-  PlusIcon,
-  Loader2,
-  TrendingUpIcon,
-  CalendarIcon,
-  BarChart2Icon,
-  EyeIcon } from
+  FileTextIcon, DownloadIcon, PrinterIcon, PlusIcon, Loader2Icon,
+  TrendingUpIcon, CalendarIcon, BarChart2Icon, EyeIcon, LockIcon,
+  SearchIcon, XCircleIcon, CheckCircle2Icon, AlertCircleIcon } from
 'lucide-react';
-
 import { supabase } from '../supabase';
 import { useToast } from '../components/Toast';
 import { ReportGeneratorModal } from '../components/ReportGeneratorModal';
-import {
-  getCompatibilityLevel,
-  getCompatibilityLabel,
-  getCompatibilityColor } from
-'../utils/scoring';
+import { Pagination } from '../components/Pagination';
+import { getCompatibilityLevel, getCompatibilityLabel, getCompatibilityColor } from '../utils/scoring';
+import { PermissionLevel } from '../App';
+import { useRealtimeMulti } from '../utils/useRealtime';
 
-// ── Tipos ────────────────────────────────────────────────────────────────────
+const TR = { blue: '#2D4494', navy: '#1a2d6b', green: '#7DB928', greenDark: '#5e8c1e', blueLight: '#3a55b5' };
+const PAGE_SIZE = 10;
+
 interface AnswerRow {
   questionText: string;
-  answer: string;
+  answer: string; // respuesta que dio el candidato
+  correctAnswer: string; // respuesta correcta
+  isCorrect: boolean; // si acertó o no
 }
-
 interface ReportRow {
-  id: string;
-  candidateName: string;
-  candidateEmail: string;
-  position: string;
-  testName: string;
-  testId: string;
-  score: number;
-  compatibility: number;
-  date: string;
-  level: string;
-  levelColor: string;
-  gender?: string;
-  age?: number;
-  education?: string;
+  id: string;candidateName: string;candidateEmail: string;position: string;
+  testName: string;testId: string;score: number;compatibility: number;
+  date: string;level: string;levelColor: string;
   rawAnswers?: Record<string, string>;
-  hardAreas?: Record<string, number>;
-  softAreas?: Record<string, number>;
-  alerts?: {title: string;description: string;}[];
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-function getBarColor(v: number) {
-  return v >= 80 ? '#16a34a' : v >= 65 ? '#2563eb' : v >= 50 ? '#d97706' : '#dc2626';
-}
-
+function getBarColor(v: number) {return v >= 80 ? TR.green : v >= 65 ? TR.blue : v >= 50 ? '#f59e0b' : '#ef4444';}
 function getRecLabel(c: number) {
-  if (c >= 80) return { text: 'Altamente Recomendable', color: '#166534', bg: '#f0fdf4' };
-  if (c >= 65) return { text: 'Recomendable', color: '#1e40af', bg: '#eff6ff' };
-  if (c >= 50) return { text: 'Recomendable con Reserva', color: '#92400e', bg: '#fffbeb' };
+  if (c >= 80) return { text: 'Altamente Recomendable', color: TR.greenDark, bg: '#f0fdf4' };
+  if (c >= 65) return { text: 'Recomendable', color: TR.blue, bg: '#eff6ff' };
+  if (c >= 50) return { text: 'Con Reserva', color: '#92400e', bg: '#fffbeb' };
   return { text: 'No Recomendable', color: '#991b1b', bg: '#fef2f2' };
 }
 
-const AREA_INFO: Record<string, {label: string;bajo: string;alto: string;}> = {
-  ajusteNormasSociales: { label: 'Ajuste Normas Sociales', bajo: 'Busca formas de evadir reglamentos, tareas, políticas e instrucciones, para beneficio propio.', alto: 'Tendencia a respetar a personas, jerarquías, normas sociales, reglas.' },
-  ajusteNormasLaborales: { label: 'Ajuste a Normas Laborales', bajo: 'Probable tendencia a considerar políticas, reglas y lineamientos, como una cuestión sugerida la cual puede a voluntad seguirse o no.', alto: 'Esta área explora aspectos donde la persona sobrepone sus interés y voluntad sobre los de la sociedad, ya sea en lo personal o laboral.' },
-  manipulacionMentiras: { label: 'Manipulación y Mentiras', bajo: 'Posiblemente ha introyectado la mentira y la manipulación en el ámbito laboral como forma convencional de actuar para lograr sus objetivos, admite haberlo hecho.', alto: 'Tendencia por actuar con sinceridad y rectitud en las relaciones laborales.' },
-  satisfaccionAntisociales: { label: 'Satisfacción y Rasgos Antisociales', bajo: 'Condiciona la satisfacción laboral y su estilo de vida por logros materiales; pudiendo ser capaz de mostrar conductas que tiendan a transgredir normas sociales para lograrlo.', alto: 'Busca mantenerse ajustado a las normas sociales como norma básica para desenvolverse social y laboralmente.' },
-  empatiaEmpresarial: { label: 'Empatía Empresarial', bajo: 'Habilidad cognitiva y emocional del individuo, en la cual este no es capaz de ponerse en la situación emocional de un conjunto de personas físicas. Mínima o ninguna compasión por los otros.', alto: 'Capacidad de ponerse en el lugar de otros y saber las implicaciones de sus actos, sin intención de perjudicarlos en un entorno organizacional.' },
-  responsabilidad: { label: 'Responsabilidad', bajo: 'Busca formas de evadir o no cumplir con obligaciones y tareas, pretendiendo hacerlas a su modo.', alto: 'Tiende a cumplir con sus obligaciones y asignaciones.' },
-  controlImpulsos: { label: 'Control de Impulsos', bajo: 'Sus deseos y emociones guían sus decisiones.', alto: 'Tiende a dominar sus deseos y motivos reflexionando.' },
-  egocentrismo: { label: 'Egocentrismo', bajo: 'Considerado con los demás en sus necesidades, incluso a veces por encima de sí mismo.', alto: 'Exaltación de la propia personalidad, hasta considerarla como centro de la atención, por sobre los demás.' },
-  motivacionLaboral: { label: 'Motivación Laboral', bajo: 'Necesidad de realizar actividades a cambio de ganancias materiales, escaso reconocimiento del trabajo en equipo por sobre lo individual.', alto: 'Su motivación para trabajar se orienta al servicio a los demás; también se observa su compromiso para con su grupo de trabajo y su jefe.' },
-  metasProfesionales: { label: 'Metas Profesionales', bajo: 'Su inclinación laboral se dirige a ser independiente, desvinculado del plan de carrera de una empresa.', alto: 'Tendencia y preferencia a formar parte de una empresa y su compromiso como empleado.' },
-  vidaFamiliar: { label: 'Vida Familiar', bajo: 'Orientado a un estilo de vida desvinculado de su familia, poco afecto por su origen y raíces.', alto: 'Se percibe el grado de integración con su familia nuclear y de origen, sus vínculos, proyectando el grado de empatía familiar.' },
-  relacionesInterpersonales: { label: 'Relaciones Interpersonales', bajo: 'Tendencia por mantener desapego afectivo de parejas y demás personas con quienes se relaciona.', alto: 'Explora los vínculos con amistades y pareja(s), para entender el grado de empatía hacia ellos.' },
-  correrRiesgos: { label: 'Correr Riesgos', bajo: 'Preferencia y tendencia por actividades tranquilas, rutinarias, que no impliquen riesgos físicos o emocionales.', alto: 'Gusto, necesidad y búsqueda de actividades dinámicas y riesgosas por sentir la adrenalina.' },
-  emocionesRespeto: { label: 'Emociones y Respeto por los Demás', bajo: 'Potencial capacidad de una persona de ser agresiva en su entorno laboral, que puede tener un frágil control de impulsos; siendo poco empático por los sentimientos de otro.', alto: 'Se inclina a respetar y entender las emociones de la gente en su entorno laboral.' }
-};
-
-const HARD_KEYS = ['ajusteNormasSociales', 'ajusteNormasLaborales', 'manipulacionMentiras', 'satisfaccionAntisociales', 'empatiaEmpresarial'];
-const SOFT_KEYS = ['responsabilidad', 'controlImpulsos', 'egocentrismo', 'motivacionLaboral', 'metasProfesionales', 'vidaFamiliar', 'relacionesInterpersonales', 'correrRiesgos', 'emocionesRespeto'];
-
-function autoAlerts(r: ReportRow) {
-  const alerts: {title: string;description: string;}[] = [];
-  const soft = r.softAreas;
-  const hard = r.hardAreas;
-  if (soft?.controlImpulsos !== undefined && soft.controlImpulsos < 65)
-  alerts.push({ title: 'Control de Impulsos', description: 'Al aparecer esta escala con porcentajes menores a 65, podría generar fallas en sus controles internos con reacciones emocionales agresivas tanto en ambientes laborales como sociales. Si esta escala se combina con alguna escala dura en rojo como satisfacción y rasgos antisociales, puede generar delitos de acoso sexual y/o laboral.' });
-  if (hard?.manipulacionMentiras !== undefined && hard.manipulacionMentiras < 65)
-  alerts.push({ title: 'Manipulación y Mentiras', description: 'El candidato podría incurrir en conductas de deshonestidad laboral. Se recomienda establecer controles de auditoría y verificación periódica en las actividades que maneje.' });
-  if (hard?.satisfaccionAntisociales !== undefined && hard.satisfaccionAntisociales < 65)
-  alerts.push({ title: 'Satisfacción y Rasgos Antisociales', description: 'La combinación de rasgos antisociales con baja empatía puede derivar en comportamientos que transgredan las normas sociales y laborales para beneficio personal.' });
-  return alerts;
-}
-
-function barRow(key: string, val: number | undefined): string {
-  if (val === undefined) return '';
-  const info = AREA_INFO[key];if (!info) return '';
-  const color = getBarColor(val);
-  return `<tr>
-    <td style="padding:5px 0;font-size:12.5px;color:#374151;font-weight:500;width:220px">${info.label}</td>
-    <td style="padding:5px 0 5px 12px">
-      <div style="display:flex;align-items:center;gap:8px">
-        <div style="flex:1;height:9px;background:#e5e7eb;border-radius:5px;overflow:hidden">
-          <div style="height:100%;width:${val}%;background:${color};border-radius:5px"></div>
-        </div>
-        <span style="font-size:12.5px;font-weight:700;color:${color};min-width:34px;text-align:right">${val}%</span>
-      </div>
-    </td>
-  </tr>`;
-}
-
-function biRow(key: string, val: number | undefined): string {
-  if (val === undefined) return '';
-  const info = AREA_INFO[key];if (!info) return '';
-  const isHigh = val >= 65;
-  const dotColor = val < 65 ? '#dc2626' : val < 80 ? '#d97706' : '#16a34a';
-  return `<tr style="border-bottom:1px solid #f3f4f6">
-    <td style="padding:9px 8px;vertical-align:top;width:38%">
-      <p style="font-size:11px;font-weight:700;color:${!isHigh ? '#b91c1c' : '#6b7280'};margin:0 0 3px 0">Bajo ${info.label}</p>
-      <p style="font-size:11px;color:#6b7280;margin:0;line-height:1.5">${info.bajo}</p>
-    </td>
-    <td style="padding:9px 4px;text-align:center;vertical-align:middle;width:12%">
-      <div style="display:flex;justify-content:space-around;align-items:center">
-        <div style="width:1px;height:30px;background:#d1d5db"></div>
-        <div style="width:11px;height:11px;border-radius:50%;background:${dotColor}"></div>
-        <div style="width:1px;height:30px;background:#d1d5db"></div>
-      </div>
-    </td>
-    <td style="padding:9px 8px;vertical-align:top;width:38%">
-      <p style="font-size:11px;font-weight:700;color:${isHigh ? '#166534' : '#6b7280'};margin:0 0 3px 0">Alto ${info.label}</p>
-      <p style="font-size:11px;color:#6b7280;margin:0;line-height:1.5">${info.alto}</p>
-    </td>
-  </tr>`;
-}
-
-// ── generatePDF ───────────────────────────────────────────────────────────────
-export function generatePDF(report: ReportRow, answersWithText: AnswerRow[]) {
+export function generatePDF(report: ReportRow, answersWithText: AnswerRow[], logoUrl?: string | null, companyName?: string) {
+  const _company = companyName || 'TalentAssess';
+  const logoHtml = logoUrl ?
+  `<img src="${logoUrl}" alt="${_company}" style="height:44px;width:auto;object-fit:contain;filter:brightness(0) invert(1)" />` :
+  `<span style="font-size:18px;font-weight:900;color:#fff">${_company}</span>`;
   const rec = getRecLabel(report.compatibility);
-  const alerts = report.alerts && report.alerts.length > 0 ? report.alerts : autoAlerts(report);
-  const hard = report.hardAreas;
-  const soft = report.softAreas;
-  const hasAreas = !!(hard || soft);
-
-  const hardBarsHTML = HARD_KEYS.map((k) => barRow(k, hard?.[k])).join('');
-  const softBarsHTML = SOFT_KEYS.map((k) => barRow(k, soft?.[k])).join('');
-  const biDirHTML = [...HARD_KEYS, ...SOFT_KEYS].map((k) => biRow(k, hard?.[k] ?? soft?.[k])).join('');
-
-  const recText = report.compatibility >= 80 ?
-  `${report.candidateName} presenta un perfil altamente compatible con el puesto de ${report.position || 'la posición evaluada'}. Se recomienda proceder con el proceso de selección con alta prioridad.` :
-  report.compatibility >= 65 ?
-  `${report.candidateName} muestra buena compatibilidad con el perfil requerido. Se recomienda continuar con el proceso considerando los resultados obtenidos.` :
-  report.compatibility >= 50 ?
-  `Al responder de manera limítrofe ante los parámetros estadísticos para este test, se percibe como una persona con un regular nivel para ajustarse a las normas establecidas. Por lo que se recomienda algún tipo de supervisión o seguimiento hasta determinar sus motivaciones.` :
-  `Los resultados de ${report.candidateName} indican que el perfil no es compatible con el puesto en este momento. Los indicadores presentan áreas de riesgo que requieren evaluación adicional.`;
-
   const angle = Math.PI - report.compatibility / 100 * Math.PI;
   const nx = Math.round(100 + 68 * Math.cos(angle));
   const ny = Math.round(100 - 68 * Math.sin(angle));
+  const recText = report.compatibility >= 80 ?
+  `${report.candidateName} presenta un perfil altamente compatible con el puesto.` :
+  report.compatibility >= 65 ? `${report.candidateName} muestra buena compatibilidad con el perfil requerido.` :
+  report.compatibility >= 50 ? `Perfil con nivel regular de ajuste a las normas establecidas.` :
+  `Los resultados indican que el perfil no es compatible con el puesto en este momento.`;
+  const correct = answersWithText.filter((a) => a.isCorrect).length;
+  const incorrect = answersWithText.filter((a) => !a.isCorrect).length;
+  const total = answersWithText.length;
 
-  // Respuestas reales
   const questionsHTML = answersWithText.length > 0 ?
-  answersWithText.map((a, i) => `
-        <p style="font-size:12px;color:#374151;margin:0 0 9px 0;line-height:1.5;padding:7px 11px;background:#f9fafb;border-left:3px solid #3b82f6;border-radius:0 5px 5px 0">
-          <strong>${i + 1}.-</strong> ${a.questionText}
-          &nbsp;<strong style="color:#1d4ed8">R: ${a.answer}</strong>
-        </p>`).join('') :
-  `<p style="font-size:12px;color:#9ca3af;font-style:italic;padding:12px">No se encontraron respuestas registradas para esta evaluación.</p>`;
-
-  const alertsHTML = alerts.length > 0 ?
-  alerts.map((a) => `
-        <tr>
-          <td style="padding:10px 14px;font-size:12px;font-weight:700;color:#374151;vertical-align:top;border-right:1px solid #e5e7eb;width:180px">${a.title}</td>
-          <td style="padding:10px 14px;font-size:12px;color:#374151;line-height:1.6">${a.description}</td>
-        </tr>`).join('') :
-  `<tr><td colspan="2" style="padding:14px;font-size:12px;color:#6b7280;text-align:center">Sin alertas registradas para este candidato.</td></tr>`;
-
-  const HEADER = () => `
-    <div style="display:flex;justify-content:space-between;align-items:flex-start;padding:18px 32px;border-bottom:2px solid #1e293b">
-      <div>
-        <div style="display:flex;align-items:baseline;gap:14px;margin-bottom:3px">
-          <span style="font-size:26px;font-weight:700;color:#1e293b;font-family:Georgia,serif">01</span>
-          <span style="font-size:18px;font-weight:700;color:#1e293b">${report.candidateName}</span>
+  `<div style="display:flex;gap:10px;margin-bottom:14px">
+        <div style="flex:1;padding:10px 14px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;text-align:center">
+          <p style="font-size:22px;font-weight:900;color:#16a34a">${correct}</p>
+          <p style="font-size:10px;font-weight:700;color:#16a34a;text-transform:uppercase;letter-spacing:.05em">Correctas</p>
         </div>
-        <div style="font-size:12.5px;color:#6b7280;margin-bottom:3px">${report.education || ''} ${report.gender ? '· ' + report.gender : ''} ${report.age ? '· ' + report.age + ' años' : ''}</div>
-        <div style="font-size:12.5px;color:#374151"><strong>Puesto:</strong> ${report.position || '—'}</div>
-        <div style="font-size:12.5px;color:#374151"><strong>Fecha de aplicación:</strong> ${report.date}</div>
+        <div style="flex:1;padding:10px 14px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;text-align:center">
+          <p style="font-size:22px;font-weight:900;color:#dc2626">${incorrect}</p>
+          <p style="font-size:10px;font-weight:700;color:#dc2626;text-transform:uppercase;letter-spacing:.05em">Incorrectas</p>
+        </div>
+        <div style="flex:1;padding:10px 14px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:8px;text-align:center">
+          <p style="font-size:22px;font-weight:900;color:#475569">${total}</p>
+          <p style="font-size:10px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.05em">Total</p>
+        </div>
       </div>
-      <div style="text-align:right">
-        <div style="font-size:10px;color:#9ca3af;text-transform:uppercase;letter-spacing:.08em;margin-bottom:3px">Plataforma de Evaluación</div>
-        <div style="font-size:18px;font-weight:800;color:#1d4ed8;letter-spacing:-.02em">TALENT<span style="color:#374151">ASSESS</span></div>
-      </div>
-    </div>`;
-
-  const FOOTER = (page: number, total: number) => `
-    <div style="display:flex;justify-content:space-between;padding:10px 32px;border-top:1px solid #e5e7eb">
-      <span style="font-size:11px;color:#9ca3af">TalentAssess · ${new Date().toLocaleDateString('es-MX', { year: 'numeric', month: 'long', day: 'numeric' })}</span>
-      <span style="font-size:11px;color:#9ca3af">Página ${page}/${total}</span>
-    </div>`;
-
-  const html = `<!DOCTYPE html>
-<html lang="es">
-<head>
-  <meta charset="UTF-8"/>
-  <title>Reporte – ${report.candidateName}</title>
-  <style>
-    *{margin:0;padding:0;box-sizing:border-box}
-    body{font-family:'Helvetica Neue',Arial,sans-serif;background:#e5e7eb;color:#1e293b;padding:24px}
-    .page{background:#fff;max-width:820px;margin:0 auto 28px;border:1px solid #d1d5db;page-break-after:always}
-    .body{padding:20px 32px 24px}
-    table{border-collapse:collapse}
-    @media print{body{background:#fff;padding:0}.page{border:none;margin:0;max-width:100%;page-break-after:always}}
-  </style>
-</head>
-<body>
-
-<!-- ══ PÁGINA 1 ══ -->
-<div class="page">
-  ${HEADER()}
-  <div class="body">
-    <h2 style="font-size:19px;font-weight:700;text-align:center;margin:0 0 18px 0;color:#1e293b;font-family:Georgia,serif">${report.testName}</h2>
-    <div style="display:flex;gap:22px;align-items:flex-start">
-      <div style="flex:1;min-width:0">
-        ${hasAreas ? `
-          <p style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#6b7280;margin-bottom:6px">Áreas Duras</p>
-          <table style="width:100%">${hardBarsHTML}</table>
-          <p style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#6b7280;margin:14px 0 6px">Áreas Blandas</p>
-          <table style="width:100%">${softBarsHTML}</table>
-        ` : `
-          <p style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#6b7280;margin-bottom:8px">Compatibilidad General</p>
-          <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
-            <div style="flex:1;height:12px;background:#e5e7eb;border-radius:6px;overflow:hidden">
-              <div style="height:100%;width:${report.compatibility}%;background:${getBarColor(report.compatibility)};border-radius:6px"></div>
+      ${answersWithText.map((a, i) => `
+        <div style="margin-bottom:8px;border-radius:8px;overflow:hidden;border:1px solid ${a.isCorrect ? '#bbf7d0' : '#fecaca'}">
+          <div style="padding:8px 12px;background:${a.isCorrect ? '#f0fdf4' : '#fef2f2'};display:flex;align-items:flex-start;gap:10px">
+            <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;margin-top:1px">
+              <span style="font-size:11px;font-weight:700;color:#94a3b8;min-width:20px">${i + 1}.</span>
+              <span style="font-size:13px;font-weight:900;color:${a.isCorrect ? '#16a34a' : '#dc2626'}">${a.isCorrect ? '✓' : '✗'}</span>
             </div>
-            <span style="font-size:16px;font-weight:800;color:${getBarColor(report.compatibility)}">${report.compatibility}%</span>
+            <div style="flex:1">
+              <p style="font-size:11px;color:#374151;font-weight:600;line-height:1.4;margin-bottom:5px">${a.questionText}</p>
+              <p style="font-size:11px;margin-bottom:${a.isCorrect ? '0' : '4px'}">
+                <span style="color:#6b7280;font-weight:600">Respondió: </span>
+                <span style="font-weight:700;color:${a.isCorrect ? '#16a34a' : '#dc2626'}">${a.answer}</span>
+              </p>
+              ${!a.isCorrect ? `<p style="font-size:11px"><span style="color:#6b7280;font-weight:600">Correcta: </span><span style="font-weight:700;color:#16a34a">${a.correctAnswer}</span></p>` : ''}
+            </div>
           </div>
-          <p style="font-size:12px;color:#6b7280">Score obtenido: <strong>${report.score} pts</strong></p>
-        `}
-      </div>
-      <div style="width:210px;flex-shrink:0;text-align:center">
-        <svg viewBox="0 0 200 110" xmlns="http://www.w3.org/2000/svg" width="200" height="110" style="display:block;margin:0 auto 6px">
-          <path d="M 16 100 A 84 84 0 0 1 52 24"   stroke="#dc2626" stroke-width="20" fill="none" stroke-linecap="butt"/>
-          <path d="M 52 24 A 84 84 0 0 1 100 16"   stroke="#f59e0b" stroke-width="20" fill="none" stroke-linecap="butt"/>
-          <path d="M 100 16 A 84 84 0 0 1 148 24"  stroke="#eab308" stroke-width="20" fill="none" stroke-linecap="butt"/>
-          <path d="M 148 24 A 84 84 0 0 1 184 100" stroke="#16a34a" stroke-width="20" fill="none" stroke-linecap="butt"/>
-          <line x1="100" y1="100" x2="${nx}" y2="${ny}" stroke="#111827" stroke-width="3" stroke-linecap="round"/>
-          <circle cx="100" cy="100" r="5" fill="#111827"/>
-        </svg>
-        <div style="font-size:13px;font-weight:700;color:${rec.color};background:${rec.bg};padding:5px 10px;border-radius:16px;display:inline-block;margin-bottom:10px">${rec.text}</div>
-        <p style="font-size:11.5px;color:#374151;line-height:1.6;text-align:left">${recText}</p>
-      </div>
-    </div>
-    ${hasAreas ? `
-    <div style="height:1px;background:#e5e7eb;margin:20px 0"></div>
-    <div style="border:1px solid #e2e8f0;border-radius:6px;overflow:hidden">
-      <table style="width:100%;border-collapse:collapse">
-        <thead>
-          <tr style="background:#374151">
-            <th style="padding:7px 10px;font-size:10.5px;font-weight:700;color:#fff;text-align:left;width:38%">&nbsp;</th>
-            <th style="padding:7px 10px;text-align:center;width:12%">
-              <div style="display:flex;justify-content:space-around">
-                <span style="background:#dc2626;padding:1px 8px;border-radius:3px;font-size:10px;color:#fff">1</span>
-                <span style="background:#f59e0b;padding:1px 8px;border-radius:3px;font-size:10px;color:#fff">2</span>
-                <span style="background:#16a34a;padding:1px 8px;border-radius:3px;font-size:10px;color:#fff">3</span>
-              </div>
-            </th>
-            <th style="padding:7px 10px;font-size:10.5px;font-weight:700;color:#fff;text-align:left;width:38%">&nbsp;</th>
-          </tr>
-        </thead>
-        <tbody>${biDirHTML}</tbody>
-      </table>
-    </div>` : ''}
-  </div>
-  ${FOOTER(1, 2)}
-</div>
+        </div>`).join('')}` :
+  `<p style="font-size:12px;color:#9ca3af;font-style:italic;padding:12px">Sin respuestas registradas.</p>`;
 
-<!-- ══ PÁGINA 2 ══ -->
-<div class="page">
-  ${HEADER()}
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"/><title>Reporte – ${report.candidateName}</title>
+  <style>*{margin:0;padding:0;box-sizing:border-box;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;color-adjust:exact!important}body{font-family:Helvetica Neue,Arial,sans-serif;background:#e5e7eb;padding:24px}.page{background:#fff;max-width:820px;margin:0 auto 28px;border:1px solid #d1d5db;border-radius:8px;overflow:hidden}.body{padding:24px 32px}@media print{body{background:#fff;padding:0}.page{border:none;margin:0;border-radius:0}}</style>
+  </head><body><div class="page">
+  <div style="background:linear-gradient(135deg,${TR.navy},${TR.blue});padding:20px 32px;display:flex;justify-content:space-between;align-items:center">
+    <div><p style="color:rgba(255,255,255,0.6);font-size:11px;text-transform:uppercase;letter-spacing:.1em">Reporte Psicométrico</p><p style="color:#fff;font-size:20px;font-weight:800;margin-top:2px">${report.candidateName}</p><p style="color:rgba(255,255,255,0.7);font-size:12px;margin-top:2px">${report.position || '—'} · ${report.date}</p></div>
+    <div style="text-align:right">${logoHtml}<br/><p style="font-size:22px;font-weight:900;color:#fff;letter-spacing:-.02em;margin-top:4px">${report.compatibility}%</p></div>
+  </div>
   <div class="body">
-    <p style="font-size:13px;font-weight:700;color:#1e293b;margin-bottom:12px">
-      Recomendación, es necesario aclarar las respuestas de la persona en una entrevista sobre las frases siguientes:
-    </p>
+    <h2 style="font-size:16px;font-weight:700;color:${TR.navy};margin-bottom:16px">${report.testName}</h2>
+    <div style="display:flex;gap:20px;align-items:flex-start;margin-bottom:20px">
+      <div style="flex:1">
+        <p style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#6b7280;margin-bottom:6px">Compatibilidad General</p>
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="flex:1;height:10px;background:#e5e7eb;border-radius:5px;overflow:hidden"><div style="height:100%;width:${report.compatibility}%;background:${getBarColor(report.compatibility)};border-radius:5px"></div></div>
+          <span style="font-size:18px;font-weight:800;color:${getBarColor(report.compatibility)}">${report.compatibility}%</span>
+        </div>
+        <p style="font-size:11px;color:#6b7280;margin-top:6px">Score raw: <strong>${report.score} pts</strong></p>
+        <div style="margin-top:10px;padding:8px 12px;background:${rec.bg};border-radius:8px;display:inline-block"><span style="font-size:12px;font-weight:700;color:${rec.color}">${rec.text}</span></div>
+      </div>
+      <div style="width:180px;flex-shrink:0;text-align:center">
+        <svg viewBox="0 0 200 110" xmlns="http://www.w3.org/2000/svg" width="180" height="99">
+          <path d="M 16 100 A 84 84 0 0 1 52 24" stroke="#ef4444" stroke-width="18" fill="none"/>
+          <path d="M 52 24 A 84 84 0 0 1 100 16" stroke="#f59e0b" stroke-width="18" fill="none"/>
+          <path d="M 100 16 A 84 84 0 0 1 148 24" stroke="${TR.blue}" stroke-width="18" fill="none"/>
+          <path d="M 148 24 A 84 84 0 0 1 184 100" stroke="${TR.green}" stroke-width="18" fill="none"/>
+          <line x1="100" y1="100" x2="${nx}" y2="${ny}" stroke="${TR.navy}" stroke-width="3" stroke-linecap="round"/>
+          <circle cx="100" cy="100" r="5" fill="${TR.navy}"/>
+        </svg>
+        <p style="font-size:11px;color:#6b7280;line-height:1.5;margin-top:6px;text-align:left">${recText}</p>
+      </div>
+    </div>
+    <div style="height:1px;background:#e5e7eb;margin-bottom:16px"></div>
+    <p style="font-size:13px;font-weight:700;color:${TR.navy};margin-bottom:10px">Detalle de Respuestas — Correctas e Incorrectas:</p>
     ${questionsHTML}
-    <div style="height:1px;background:#e5e7eb;margin:18px 0"></div>
-    <p style="font-size:13px;font-weight:700;color:#1e293b;margin-bottom:12px">
-      Posibles delitos corporativos asociados y/o advertencias de acuerdo con los resultados obtenidos:
-    </p>
-    <div style="border:1px solid #e2e8f0;border-radius:6px;overflow:hidden">
-      <table style="width:100%;border-collapse:collapse"><tbody>${alertsHTML}</tbody></table>
-    </div>
-    <div style="margin-top:18px;padding:10px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px">
-      <p style="font-size:10.5px;color:#6b7280;font-style:italic;line-height:1.6">
-        *De acuerdo con la media poblacional, cualquier área que tenga menos del 70% ya no debería considerarse como recomendable,
-        sin embargo, se ha dado una tolerancia de 4 a 6 puntos porcentuales que corresponden a la desviación estándar.
-      </p>
-    </div>
   </div>
-  ${FOOTER(2, 2)}
-</div>
+  <div style="padding:10px 32px;background:#f9fafb;border-top:1px solid #e5e7eb;display:flex;justify-content:space-between">
+    <span style="font-size:11px;color:#9ca3af">${_company}</span>
+    <span style="font-size:11px;color:#9ca3af">${new Date().toLocaleDateString('es-MX', { year: 'numeric', month: 'long', day: 'numeric' })}</span>
+  </div>
+  </div></body></html>`;
 
-</body>
-</html>`;
+  // ── Descarga directa — no abre diálogo de impresión ──────────────
+  const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const filename = `Reporte_${report.candidateName.replace(/\s+/g, '_')}_${report.testName.replace(/\s+/g, '_')}.html`;
+  a.href = url;a.download = filename;
+  document.body.appendChild(a);a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 
-  const w = window.open('', '_blank', 'width=960,height=800');
-  if (!w) return;
-  w.document.write(html);
-  w.document.close();
-  w.focus();
-  setTimeout(() => w.print(), 600);
+  // Retornar html para reutilizar en impresión
+  return html;
 }
 
-// ── Componente Principal ──────────────────────────────────────────────────────
-export function Reports() {
+interface ReportsProps {permission?: PermissionLevel;}
+
+export function Reports({ permission = 'full' }: ReportsProps) {
   const { showToast } = useToast();
   const [reports, setReports] = useState<ReportRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [showGeneratorModal, setShowGeneratorModal] = useState(false);
   const [previewReport, setPreviewReport] = useState<ReportRow | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [companyName, setCompanyName] = useState('Grupo Económico Torres Rodríguez');
+  const questionsCache = useRef<Record<string, {id: string;text: string;options: any;}[]>>({});
+  const isReadonly = permission === 'readonly';
 
-  // Cache de preguntas por test_id para no repetir fetches
-  const questionsCache = React.useRef<Record<string, {id: string;text: string;options: any;}[]>>({});
+  useEffect(() => {setCurrentPage(1);}, [searchTerm]);
 
   const fetchReports = useCallback(async () => {
     try {
       setLoading(true);
-      const { data: results, error } = await supabase.
-      from('results').
-      select('*').
-      order('id', { ascending: false });
+      const { data: results, error } = await supabase.from('results').select('*').order('id', { ascending: false });
       if (error) throw error;
-
       const { data: candidates } = await supabase.from('candidates').select('*');
       const { data: tests } = await supabase.from('tests').select('*');
-
+      const { data: settings } = await supabase.from('app_settings').select('logo_url, company_name').eq('id', '00000000-0000-0000-0000-000000000001').single();
+      if (settings?.logo_url) setLogoUrl(settings.logo_url);
+      if (settings?.company_name) setCompanyName(settings.company_name);
       const rows: ReportRow[] = (results || []).map((r: any) => {
         const candidate = candidates?.find((c: any) => String(c.id) === String(r.user_name));
         const test = tests?.find((t: any) => String(t.id) === String(r.test_id));
         const compat = Math.min(100, Math.round(r.score || 0));
         const lvl = getCompatibilityLevel(compat);
-
-        // answers puede venir como objeto ya parseado (jsonb) o como string
-        const rawAnswers = r.answers ?
-        typeof r.answers === 'string' ? JSON.parse(r.answers) : r.answers :
-        {};
-
+        const rawAnswers = r.answers ? typeof r.answers === 'string' ? JSON.parse(r.answers) : r.answers : {};
         return {
-          id: String(r.id),
-          candidateName: candidate?.name || r.user_name || 'Sin nombre',
-          candidateEmail: candidate?.email || '—',
-          position: candidate?.position || '—',
-          testName: test?.name || 'Sin test',
-          testId: String(r.test_id || ''),
-          score: r.score || 0,
-          compatibility: compat,
-          date: r.created_at ?
-          new Date(r.created_at).toLocaleDateString('es-MX') :
-          '—',
-          level: getCompatibilityLabel(lvl),
-          levelColor: getCompatibilityColor(lvl),
-          gender: candidate?.gender,
-          age: candidate?.age,
-          education: candidate?.education,
-          rawAnswers,
-          hardAreas: r.hard_areas ?
-          typeof r.hard_areas === 'string' ? JSON.parse(r.hard_areas) : r.hard_areas :
-          undefined,
-          softAreas: r.soft_areas ?
-          typeof r.soft_areas === 'string' ? JSON.parse(r.soft_areas) : r.soft_areas :
-          undefined,
-          alerts: r.alerts ?
-          typeof r.alerts === 'string' ? JSON.parse(r.alerts) : r.alerts :
-          undefined
+          id: String(r.id), candidateName: String(candidate?.name || r.user_name || 'Sin nombre'),
+          candidateEmail: String(candidate?.email || '—'), position: String(candidate?.position || '—'),
+          testName: String(test?.name || 'Sin test'), testId: String(r.test_id || ''),
+          score: Number(r.score) || 0, compatibility: compat,
+          date: r.created_at ? new Date(r.created_at).toLocaleDateString('es-MX') : '—',
+          level: String(getCompatibilityLabel(lvl)), levelColor: String(getCompatibilityColor(lvl)), rawAnswers
         };
       });
       setReports(rows);
-    } catch (err: any) {
-      showToast('Error al cargar reportes: ' + err.message, 'error');
-    } finally {
-      setLoading(false);
-    }
+    } catch (err: any) {showToast('Error al cargar reportes: ' + err.message, 'error');} finally
+    {setLoading(false);}
   }, [showToast]);
 
   useEffect(() => {fetchReports();}, [fetchReports]);
 
-  // Cruza preguntas con respuestas reales
+  // ── Tiempo real: la tabla se actualiza al recibir resultados nuevos ──
+  useRealtimeMulti(['results', 'candidates'], fetchReports);
+
   const resolveAnswers = async (report: ReportRow): Promise<AnswerRow[]> => {
     if (!report.testId || !report.rawAnswers || Object.keys(report.rawAnswers).length === 0) return [];
-
     if (!questionsCache.current[report.testId]) {
-      const { data: qs } = await supabase.
-      from('questions').
-      select('id, text, options').
-      eq('test_id', report.testId);
+      const { data: qs } = await supabase.from('questions').select('id, text, options').eq('test_id', report.testId);
       questionsCache.current[report.testId] = qs || [];
     }
-
     const questions = questionsCache.current[report.testId];
-    const answers = report.rawAnswers;
 
     return questions.
-    filter((q) => answers[q.id] !== undefined && answers[q.id] !== null).
+    filter((q) => report.rawAnswers![q.id] !== undefined).
     map((q) => {
-      const rawAnswer = String(answers[q.id]);
-      let displayAnswer = rawAnswer;
+      const rawAnswer = report.rawAnswers![q.id];
+      const opts: any[] = Array.isArray(q.options) ?
+      q.options :
+      typeof q.options === 'string' ? JSON.parse(q.options) : [];
 
-      // Intenta mapear el valor a su label si options es un array
-      if (Array.isArray(q.options)) {
-        const match = q.options.find((o: any) =>
-        String(o?.value) === rawAnswer ||
-        String(o?.id) === rawAnswer ||
-        typeof o === 'string' && o === rawAnswer
-        );
+      // La respuesta puede estar guardada como índice (número) o como value legacy
+      const selectedIndex = typeof rawAnswer === 'number' || /^\d+$/.test(String(rawAnswer)) ?
+      Number(rawAnswer) :
+      -1;
+
+      let candidateLabel = String(rawAnswer);
+      let candidateValue = -1;
+      let correctLabel = '—';
+
+      if (selectedIndex >= 0 && opts[selectedIndex]) {
+        // Guardado como índice (nuevo sistema)
+        candidateLabel = String(opts[selectedIndex]?.label ?? opts[selectedIndex]?.text ?? rawAnswer);
+        candidateValue = Number(opts[selectedIndex]?.value ?? 0);
+      } else {
+        // Legacy: rawAnswer es el value directo
+        const match = opts.find((o: any) => String(o?.value) === String(rawAnswer));
         if (match) {
-          displayAnswer = match.label ?? match.text ?? match.value ?? rawAnswer;
+          candidateLabel = String(match.label ?? match.text ?? rawAnswer);
+          candidateValue = Number(match.value ?? 0);
         }
       }
 
-      return { questionText: q.text, answer: displayAnswer };
+      // Respuesta correcta = opción con el value más alto (1 en nuestro sistema)
+      const maxVal = Math.max(...opts.map((o: any) => Number(o?.value ?? 0)));
+      const correctOpt = opts.find((o: any) => Number(o?.value ?? 0) === maxVal);
+      if (correctOpt) correctLabel = String(correctOpt.label ?? correctOpt.text ?? '—');
+
+      const isCorrect = candidateValue === maxVal && maxVal > 0;
+
+      return {
+        questionText: String(q.text || ''),
+        answer: candidateLabel,
+        correctAnswer: correctLabel,
+        isCorrect
+      };
     });
   };
 
-  // Genera el PDF con respuestas reales
   const handleDownload = async (r: ReportRow) => {
-    showToast('Preparando reporte…', 'info');
-    const answersWithText = await resolveAnswers(r);
-    generatePDF(r, answersWithText);
+    showToast('Descargando reporte…', 'info');
+    generatePDF(r, await resolveAnswers(r), logoUrl, companyName);
   };
 
-  // Stats derivadas
-  const avg = reports.length ?
-  Math.round(reports.reduce((s, r) => s + r.compatibility, 0) / reports.length) :
-  0;
+  const handlePrint = async (r: ReportRow) => {
+    showToast('Preparando impresión…', 'info');
+    const html = generatePDF(r, await resolveAnswers(r), logoUrl, companyName);
+    if (!html) return;
+    const w = window.open('', '_blank', 'width=960,height=800');
+    if (!w) return;
+    w.document.write(html);w.document.close();w.focus();
+    setTimeout(() => {w.print();}, 800);
+  };
+
+  const filtered = reports.filter((r) => {
+    if (!searchTerm.trim()) return true;
+    const term = searchTerm.toLowerCase();
+    return r.candidateName.toLowerCase().includes(term) || r.testName.toLowerCase().includes(term) || r.position.toLowerCase().includes(term);
+  });
+
+  const avg = reports.length ? Math.round(reports.reduce((s, r) => s + r.compatibility, 0) / reports.length) : 0;
   const highlyRec = reports.filter((r) => r.compatibility >= 80).length;
-  const thisMonth = reports.filter((r) => {
-    const now = new Date();
-    const d = new Date(r.date.split('/').reverse().join('-'));
-    return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-  }).length;
+  const thisMonth = reports.filter((r) => {const now = new Date();const d = new Date(r.date.split('/').reverse().join('-'));return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();}).length;
+
+  const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
+  const paginated = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
 
   return (
-    <div className="p-6 space-y-6 animate-in fade-in duration-500">
+    <div className="p-6 space-y-5">
+
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Reportes</h1>
-          <p className="text-sm text-gray-500 mt-0.5">
-            Datos reales · conectado a Supabase · {reports.length} evaluaciones
+          <h1 className="text-2xl font-black tracking-tight" style={{ color: TR.navy }}>Reportes</h1>
+          <p className="text-gray-400 text-sm mt-0.5 flex items-center gap-2">
+            {reports.length} evaluaciones
+            {isReadonly && <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-yellow-100 text-yellow-700 rounded-full text-xs font-semibold"><LockIcon className="w-3 h-3" />Solo lectura</span>}
           </p>
         </div>
-        <button
-          onClick={() => setShowGeneratorModal(true)}
-          className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors shadow-md font-bold text-sm">
-          
-          <PlusIcon className="w-4 h-4" />
-          Generar Reporte
-        </button>
+        {!isReadonly &&
+        <button onClick={() => setShowGeneratorModal(true)}
+        className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-white shadow-md transition-all hover:opacity-90"
+        style={{ background: `linear-gradient(135deg, ${TR.blue}, ${TR.navy})` }}>
+            <PlusIcon className="w-4 h-4" /> Generar Reporte
+          </button>
+        }
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {[
-        { label: 'Total Reportes', value: reports.length, icon: <FileTextIcon className="w-5 h-5 text-blue-600" />, color: 'bg-blue-50' },
-        { label: 'Este Mes', value: thisMonth, icon: <CalendarIcon className="w-5 h-5 text-green-600" />, color: 'bg-green-50' },
-        { label: 'Promedio Compat.', value: `${avg}%`, icon: <BarChart2Icon className="w-5 h-5 text-orange-600" />, color: 'bg-orange-50' },
-        { label: 'Muy Recomendados', value: highlyRec, icon: <TrendingUpIcon className="w-5 h-5 text-purple-600" />, color: 'bg-purple-50' }].
+        { label: 'Total Reportes', value: reports.length, icon: FileTextIcon, color: TR.blue },
+        { label: 'Este Mes', value: thisMonth, icon: CalendarIcon, color: TR.navy },
+        { label: 'Promedio Compat.', value: `${avg}%`, icon: BarChart2Icon, color: '#f59e0b' },
+        { label: 'Muy Recomendados', value: highlyRec, icon: TrendingUpIcon, color: TR.green }].
         map((s) =>
-        <div key={s.label} className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm hover:shadow-md transition-shadow">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs uppercase tracking-wider text-gray-500 font-bold mb-1">{s.label}</p>
-                <p className="text-3xl font-bold text-gray-900">{s.value}</p>
-              </div>
-              <div className={`w-11 h-11 rounded-xl ${s.color} flex items-center justify-center`}>{s.icon}</div>
+        <div key={s.label} className="bg-white rounded-xl p-4 border border-gray-100 shadow-sm flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: `${s.color}12` }}>
+              <s.icon className="w-5 h-5" style={{ color: s.color }} />
+            </div>
+            <div>
+              <p className="text-xs text-gray-400 font-medium">{s.label}</p>
+              <p className="text-xl font-black" style={{ color: TR.navy }}>{s.value}</p>
             </div>
           </div>
         )}
       </div>
 
       {/* Tabla */}
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-          <h3 className="font-bold text-gray-900">Historial de Evaluaciones</h3>
-          <span className="text-xs text-gray-400 font-medium">{reports.length} registros</span>
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+
+        {/* Header tabla con buscador */}
+        <div className="px-6 py-4 border-b border-gray-100 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"
+        style={{ background: '#fafafa' }}>
+          <div>
+            <h3 className="font-bold text-gray-900">Historial de Evaluaciones</h3>
+            <p className="text-xs text-gray-400">{filtered.length}{searchTerm ? ` de ${reports.length}` : ''} registros</p>
+          </div>
+          <div className="relative w-full sm:w-64">
+            <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Buscar candidato o prueba..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-9 pr-9 py-2 border border-gray-200 rounded-lg text-sm outline-none bg-white focus:ring-1"
+              style={{ '--tw-ring-color': TR.blue } as any} />
+            
+            {searchTerm &&
+            <button onClick={() => setSearchTerm('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-300 hover:text-gray-500">
+                <XCircleIcon className="w-4 h-4" />
+              </button>
+            }
+          </div>
         </div>
 
         {loading ?
         <div className="flex flex-col items-center justify-center h-48">
-            <Loader2 className="w-8 h-8 animate-spin text-blue-600 mb-2" />
-            <p className="text-gray-400 text-sm">Cargando desde Supabase…</p>
+            <Loader2Icon className="w-8 h-8 animate-spin mb-2" style={{ color: TR.blue }} />
+            <p className="text-gray-400 text-sm">Cargando…</p>
           </div> :
         reports.length === 0 ?
-        <div className="flex flex-col items-center justify-center h-48 text-gray-400">
-            <FileTextIcon className="w-10 h-10 mb-2 opacity-40" />
-            <p className="font-medium">No hay evaluaciones registradas</p>
-            <p className="text-xs mt-1">Aplica pruebas a candidatos para ver reportes aquí</p>
+        <div className="flex flex-col items-center justify-center h-48 text-gray-300">
+            <FileTextIcon className="w-10 h-10 mb-2" />
+            <p className="text-gray-400 font-medium">No hay evaluaciones registradas</p>
           </div> :
 
-        <div className="overflow-x-auto">
-            <table className="w-full text-left">
-              <thead className="bg-gray-50 border-b border-gray-100">
-                <tr className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">
-                  <th className="px-6 py-3">Candidato</th>
-                  <th className="px-6 py-3">Prueba</th>
-                  <th className="px-6 py-3">Score</th>
-                  <th className="px-6 py-3">Compatibilidad</th>
-                  <th className="px-6 py-3">Resultado</th>
-                  <th className="px-6 py-3">Fecha</th>
-                  <th className="px-6 py-3 text-right">Acciones</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50">
-                {reports.map((r) =>
-              <tr key={r.id} className="hover:bg-blue-50/30 transition-colors group">
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-white text-xs font-bold shrink-0">
-                          {r.candidateName.substring(0, 2).toUpperCase()}
-                        </div>
-                        <div>
-                          <p className="font-bold text-gray-900 text-sm">{r.candidateName}</p>
-                          <p className="text-xs text-gray-400">{r.position}</p>
-                        </div>
+        <>
+            {/* Col headers */}
+            <div className="grid grid-cols-12 px-6 py-3 text-[11px] font-bold uppercase tracking-widest text-gray-400 border-b border-gray-50">
+              <div className="col-span-3">Candidato</div>
+              <div className="col-span-3">Prueba</div>
+              <div className="col-span-1">Score</div>
+              <div className="col-span-2">Compat.</div>
+              <div className="col-span-2">Resultado</div>
+              <div className="col-span-1 text-right">Fecha</div>
+            </div>
+
+            <div className="divide-y divide-gray-50">
+              {paginated.length === 0 ?
+            <div className="text-center py-10 text-gray-400">Sin resultados para "{searchTerm}"</div> :
+            paginated.map((r) => {
+              const color = getBarColor(r.compatibility);
+              const rec = getRecLabel(r.compatibility);
+              return (
+                <div key={r.id} className="grid grid-cols-12 px-6 py-4 items-center hover:bg-blue-50/20 transition-colors group">
+
+                    {/* Candidato */}
+                    <div className="col-span-3 flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
+                    style={{ background: `linear-gradient(135deg, ${TR.blue}, ${TR.navy})` }}>
+                        {String(r.candidateName).substring(0, 2).toUpperCase()}
                       </div>
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-600 font-medium">{r.testName}</td>
-                    <td className="px-6 py-4 text-sm font-bold text-gray-800">{r.score} pts</td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-2">
-                        <div className="w-20 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                          <div
-                        className={`h-full rounded-full ${r.compatibility >= 80 ? 'bg-emerald-500' : r.compatibility >= 65 ? 'bg-blue-500' : r.compatibility >= 50 ? 'bg-yellow-400' : 'bg-red-400'}`}
-                        style={{ width: `${r.compatibility}%` }} />
-                      
-                        </div>
-                        <span className="text-sm font-bold text-gray-700">{r.compatibility}%</span>
+                      <div className="min-w-0">
+                        <p className="font-semibold text-sm text-gray-900 truncate">{r.candidateName}</p>
+                        <p className="text-xs text-gray-400 truncate">{r.position}</p>
                       </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${r.levelColor}`}>
+                    </div>
+
+                    {/* Prueba */}
+                    <div className="col-span-3">
+                      <span className="text-sm text-gray-600 font-medium truncate block">{r.testName}</span>
+                    </div>
+
+                    {/* Score */}
+                    <div className="col-span-1">
+                      <span className="text-sm font-black" style={{ color: TR.navy }}>{r.score}</span>
+                    </div>
+
+                    {/* Compatibilidad */}
+                    <div className="col-span-2 pr-3">
+                      <div className="flex items-center gap-1.5">
+                        <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                          <div className="h-full rounded-full" style={{ width: `${r.compatibility}%`, background: color }} />
+                        </div>
+                        <span className="text-xs font-bold" style={{ color }}>{r.compatibility}%</span>
+                      </div>
+                    </div>
+
+                    {/* Resultado */}
+                    <div className="col-span-2">
+                      <span className="px-2.5 py-1 rounded-lg text-xs font-bold" style={{ background: rec.bg, color: rec.color }}>
                         {r.level}
                       </span>
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-400">{r.date}</td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button
-                      onClick={() => setPreviewReport(r)}
-                      title="Vista previa"
-                      className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
-                      
-                          <EyeIcon className="w-4 h-4" />
+                    </div>
+
+                    {/* Fecha + acciones */}
+                    <div className="col-span-1 flex items-center justify-end gap-1">
+                      <span className="text-xs text-gray-300 group-hover:hidden">{r.date}</span>
+                      <div className="hidden group-hover:flex gap-1">
+                        <button onClick={() => setPreviewReport(r)} className="p-1.5 rounded-lg hover:bg-blue-100 transition-colors" style={{ color: TR.blue }}>
+                          <EyeIcon className="w-3.5 h-3.5" />
                         </button>
-                        <button
-                      onClick={() => handleDownload(r)}
-                      title="Descargar PDF"
-                      className="p-1.5 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors">
-                      
-                          <DownloadIcon className="w-4 h-4" />
+                        <button onClick={() => handleDownload(r)} className="p-1.5 rounded-lg hover:bg-green-100 transition-colors" style={{ color: TR.green }}>
+                          <DownloadIcon className="w-3.5 h-3.5" />
                         </button>
-                        <button
-                      onClick={() => handleDownload(r)}
-                      title="Imprimir"
-                      className="p-1.5 text-gray-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors">
-                      
-                          <PrinterIcon className="w-4 h-4" />
+                        <button onClick={() => handlePrint(r)} className="p-1.5 rounded-lg hover:bg-purple-100 text-purple-500 transition-colors">
+                          <PrinterIcon className="w-3.5 h-3.5" />
                         </button>
                       </div>
-                    </td>
-                  </tr>
-              )}
-              </tbody>
-            </table>
-          </div>
+                    </div>
+                  </div>);
+
+            })}
+            </div>
+
+            <div className="border-t border-gray-100 px-6">
+              <Pagination currentPage={currentPage} totalPages={totalPages} totalItems={filtered.length} itemsPerPage={PAGE_SIZE} onPageChange={setCurrentPage} />
+            </div>
+          </>
         }
       </div>
 
-      {/* Modal vista previa */}
+      {/* Modal preview */}
       {previewReport &&
-      <div
-        className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50"
-        onClick={() => setPreviewReport(null)}>
-        
-          <div
-          className="bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden"
-          onClick={(e) => e.stopPropagation()}>
-          
-            <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-6 py-5">
-              <p className="text-blue-200 text-xs font-bold uppercase tracking-wider mb-1">Vista Previa del Reporte</p>
+      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50" onClick={() => setPreviewReport(null)}>
+          <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            <div className="px-6 py-5" style={{ background: `linear-gradient(135deg, ${TR.navy}, ${TR.blue})` }}>
+              <p className="text-xs font-bold uppercase tracking-wider mb-1" style={{ color: 'rgba(255,255,255,0.5)' }}>Vista Previa</p>
               <h2 className="text-white text-xl font-bold">{previewReport.candidateName}</h2>
-              <p className="text-blue-200 text-sm">{previewReport.testName}</p>
+              <p className="text-sm mt-0.5" style={{ color: 'rgba(255,255,255,0.6)' }}>{previewReport.testName}</p>
             </div>
             <div className="p-6 space-y-4">
-              <div className="flex items-center justify-between">
-                <span className="text-gray-500 text-sm">Compatibilidad</span>
-                <span className="text-3xl font-black text-gray-900">{previewReport.compatibility}%</span>
+              <div className="flex items-end justify-between">
+                <span className="text-gray-400 text-sm">Compatibilidad</span>
+                <span className="text-5xl font-black" style={{ color: getBarColor(previewReport.compatibility) }}>{previewReport.compatibility}%</span>
               </div>
               <div className="h-3 bg-gray-100 rounded-full overflow-hidden">
-                <div
-                className={`h-full rounded-full ${previewReport.compatibility >= 80 ? 'bg-emerald-500' : previewReport.compatibility >= 65 ? 'bg-blue-500' : previewReport.compatibility >= 50 ? 'bg-yellow-400' : 'bg-red-400'}`}
-                style={{ width: `${previewReport.compatibility}%` }} />
-              
+                <div className="h-full rounded-full transition-all"
+              style={{ width: `${previewReport.compatibility}%`, background: getBarColor(previewReport.compatibility) }} />
               </div>
               <div className="grid grid-cols-2 gap-3 pt-2">
-                {[
-              ['Puesto', previewReport.position],
-              ['Score Raw', `${previewReport.score} pts`],
-              ['Fecha', previewReport.date],
-              ['Resultado', previewReport.level]].
-              map(([label, value]) =>
-              <div key={label} className="bg-gray-50 rounded-xl p-3">
+                {[['Puesto', previewReport.position], ['Score', `${previewReport.score} pts`], ['Fecha', previewReport.date], ['Resultado', previewReport.level]].map(([label, value]) =>
+              <div key={label} className="bg-gray-50 rounded-xl p-3 border border-gray-100">
                     <p className="text-xs text-gray-400 font-semibold uppercase">{label}</p>
                     <p className="text-sm font-bold text-gray-800 mt-0.5">{value}</p>
                   </div>
               )}
               </div>
               <div className="flex gap-3 pt-2">
-                <button
-                onClick={() => setPreviewReport(null)}
-                className="flex-1 py-2.5 border border-gray-200 rounded-xl text-gray-600 font-semibold text-sm hover:bg-gray-50 transition-colors">
-                
-                  Cerrar
-                </button>
-                <button
-                onClick={() => {setPreviewReport(null);handleDownload(previewReport);}}
-                className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-blue-600 text-white rounded-xl font-semibold text-sm hover:bg-blue-700 transition-colors shadow-md">
-                
-                  <DownloadIcon className="w-4 h-4" />
-                  Descargar PDF
+                <button onClick={() => setPreviewReport(null)} className="flex-1 py-2.5 border border-gray-200 rounded-xl text-gray-600 font-semibold text-sm hover:bg-gray-50">Cerrar</button>
+                <button onClick={() => {setPreviewReport(null);handleDownload(previewReport);}}
+              className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-white font-semibold text-sm shadow-md"
+              style={{ background: `linear-gradient(135deg, ${TR.blue}, ${TR.navy})` }}>
+                  <DownloadIcon className="w-4 h-4" /> Descargar PDF
                 </button>
               </div>
             </div>
@@ -634,10 +482,7 @@ export function Reports() {
         </div>
       }
 
-      <ReportGeneratorModal
-        isOpen={showGeneratorModal}
-        onClose={() => {setShowGeneratorModal(false);fetchReports();}} />
-      
+      <ReportGeneratorModal isOpen={showGeneratorModal} onClose={() => {setShowGeneratorModal(false);fetchReports();}} />
     </div>);
 
 }
