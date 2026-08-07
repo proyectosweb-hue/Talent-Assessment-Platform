@@ -1,10 +1,16 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { XIcon, FileTextIcon, UserIcon, UsersIcon } from 'lucide-react';
 import { useToast } from './Toast';
-import { mockCandidates } from '../data/mockData';
+import { supabase } from '../supabase';
 interface ReportGeneratorModalProps {
   isOpen: boolean;
   onClose: () => void;
+}
+interface CandidateOption {
+  id: string;
+  name: string;
+  position: string | null;
+  compatibility: number | null;
 }
 export function ReportGeneratorModal({
   isOpen,
@@ -15,10 +21,47 @@ export function ReportGeneratorModal({
     'individual' | 'consolidated' | 'executive'>(
     'individual');
   const [selectedCandidate, setSelectedCandidate] = useState('');
+  const [candidates, setCandidates] = useState<CandidateOption[]>([]);
+  const [loadingCandidates, setLoadingCandidates] = useState(false);
   const [dateRange, setDateRange] = useState({
     from: '',
     to: ''
   });
+
+  // Carga los candidatos ya evaluados cada vez que se abre el modal.
+  useEffect(() => {
+    if (!isOpen) return;
+    let cancelled = false;
+
+    const loadCandidates = async () => {
+      setLoadingCandidates(true);
+      const { data, error } = await supabase.
+      from('candidates').
+      select('id, name, position, compatibility').
+      eq('status', 'completed').
+      order('compatibility', { ascending: false });
+
+      if (cancelled) return;
+      if (error) {
+        console.error('Error cargando candidatos:', error);
+        showToast('Error al cargar candidatos: ' + error.message, 'error');
+        setCandidates([]);
+      } else {
+        setCandidates(
+          (data || []).map((c: any) => ({
+            id: String(c.id),
+            name: c.name,
+            position: c.position,
+            compatibility: c.compatibility
+          }))
+        );
+      }
+      setLoadingCandidates(false);
+    };
+
+    loadCandidates();
+    return () => {cancelled = true;};
+  }, [isOpen, showToast]);
   const handleGenerate = () => {
     if (reportType === 'individual' && !selectedCandidate) {
       showToast('Por favor selecciona un candidato', 'warning');
@@ -127,16 +170,21 @@ export function ReportGeneratorModal({
               <select
               value={selectedCandidate}
               onChange={(e) => setSelectedCandidate(e.target.value)}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-              
-                <option value="">Seleccionar candidato...</option>
-                {mockCandidates.
-              filter((c) => c.status === 'completed').
-              map((candidate) =>
+              disabled={loadingCandidates}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50 disabled:text-gray-400">
+
+                <option value="">
+                  {loadingCandidates ?
+                'Cargando candidatos...' :
+                candidates.length === 0 ?
+                'No hay candidatos evaluados todavía' :
+                'Seleccionar candidato...'}
+                </option>
+                {candidates.map((candidate) =>
               <option key={candidate.id} value={candidate.id}>
-                      {candidate.name} - {candidate.position} (
-                      {candidate.compatibility}%)
-                    </option>
+                    {candidate.name} - {candidate.position || 'Sin puesto'} (
+                    {candidate.compatibility ?? 0}%)
+                  </option>
               )}
               </select>
             </div>

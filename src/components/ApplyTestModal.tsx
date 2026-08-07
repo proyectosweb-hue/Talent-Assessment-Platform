@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { XIcon, PlayIcon, UserIcon } from 'lucide-react';
 import { useToast } from './Toast';
-import { mockCandidates } from '../data/mockData';
+import { supabase } from '../supabase';
 interface ApplyTestModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -12,10 +12,55 @@ interface ApplyTestModalProps {
     items: number;
   } | null;
 }
+interface AvailableCandidate {
+  id: string;
+  name: string;
+  email: string | null;
+  position: string | null;
+  status: string;
+}
 export function ApplyTestModal({ isOpen, onClose, test }: ApplyTestModalProps) {
   const { showToast } = useToast();
   const [selectedCandidates, setSelectedCandidates] = useState<string[]>([]);
+  const [availableCandidates, setAvailableCandidates] = useState<AvailableCandidate[]>([]);
+  const [loadingCandidates, setLoadingCandidates] = useState(false);
   const [sendEmail, setSendEmail] = useState(true);
+
+  // Candidatos que todavía no han terminado sus pruebas.
+  useEffect(() => {
+    if (!isOpen) return;
+    let cancelled = false;
+
+    const loadCandidates = async () => {
+      setLoadingCandidates(true);
+      const { data, error } = await supabase.
+      from('candidates').
+      select('id, name, email, position, status').
+      in('status', ['pending', 'in_progress']).
+      order('name');
+
+      if (cancelled) return;
+      if (error) {
+        console.error('Error cargando candidatos:', error);
+        showToast('Error al cargar candidatos: ' + error.message, 'error');
+        setAvailableCandidates([]);
+      } else {
+        setAvailableCandidates(
+          (data || []).map((c: any) => ({
+            id: String(c.id),
+            name: c.name,
+            email: c.email,
+            position: c.position,
+            status: c.status
+          }))
+        );
+      }
+      setLoadingCandidates(false);
+    };
+
+    loadCandidates();
+    return () => {cancelled = true;};
+  }, [isOpen, showToast]);
   const handleApply = () => {
     if (selectedCandidates.length === 0) {
       showToast('Por favor selecciona al menos un candidato', 'warning');
@@ -39,9 +84,6 @@ export function ApplyTestModal({ isOpen, onClose, test }: ApplyTestModalProps) {
     );
   };
   if (!isOpen || !test) return null;
-  const availableCandidates = mockCandidates.filter(
-    (c) => c.status === 'pending' || c.status === 'in_progress'
-  );
   return (
     <div
       className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50"
@@ -87,7 +129,11 @@ export function ApplyTestModal({ isOpen, onClose, test }: ApplyTestModalProps) {
               Seleccionar Candidatos ({selectedCandidates.length} seleccionados)
             </h3>
 
-            {availableCandidates.length === 0 ?
+            {loadingCandidates ?
+            <div className="text-center py-8 text-gray-500">
+                <p>Cargando candidatos...</p>
+              </div> :
+            availableCandidates.length === 0 ?
             <div className="text-center py-8 text-gray-500">
                 <UserIcon className="w-12 h-12 mx-auto mb-2 text-gray-400" />
                 <p>No hay candidatos disponibles para evaluación</p>
