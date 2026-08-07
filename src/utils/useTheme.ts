@@ -1,19 +1,11 @@
 export type ThemeOption = 'Claro' | 'Oscuro' | 'Automático';
-
 const STORAGE_KEY = 'app-theme';
-
 function setHtmlClass(isDark: boolean) {
   const root = document.documentElement;
-  if (isDark) root.classList.add('dark');else
-  root.classList.remove('dark');
+  if (isDark) root.classList.add('dark');else root.classList.remove('dark');
 }
-
 function systemPrefersDark(): boolean {
-  return (
-    typeof window !== 'undefined' &&
-    window.matchMedia &&
-    window.matchMedia('(prefers-color-scheme: dark)').matches);
-
+  return typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
 }
 
 /**
@@ -24,9 +16,9 @@ export function applyTheme(theme: ThemeOption) {
     localStorage.setItem(STORAGE_KEY, theme);
   } catch {
 
+
     // ignore storage errors (private mode, etc.)
-  }
-  if (theme === 'Oscuro') {
+  }if (theme === 'Oscuro') {
     setHtmlClass(true);
   } else if (theme === 'Claro') {
     setHtmlClass(false);
@@ -45,6 +37,7 @@ export function getStoredTheme(): ThemeOption {
     if (v === 'Claro' || v === 'Oscuro' || v === 'Automático') return v;
   } catch {
 
+
     // ignore
   }return 'Automático';
 }
@@ -62,14 +55,12 @@ export function initTheme() {
  */
 export function watchSystemTheme(): () => void {
   if (typeof window === 'undefined' || !window.matchMedia) return () => {};
-
   const mq = window.matchMedia('(prefers-color-scheme: dark)');
   const handler = (e: MediaQueryListEvent) => {
     if (getStoredTheme() === 'Automático') {
       setHtmlClass(e.matches);
     }
   };
-
   if (mq.addEventListener) {
     mq.addEventListener('change', handler);
     return () => mq.removeEventListener('change', handler);

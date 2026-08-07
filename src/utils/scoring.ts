@@ -1,5 +1,4 @@
 import { ScoreLevel, CompatibilityLevel } from '../types';
-
 export function getScoreLevel(score: number): ScoreLevel {
   if (score >= 80) return 'very_high';
   if (score >= 60) return 'high';
@@ -7,14 +6,12 @@ export function getScoreLevel(score: number): ScoreLevel {
   if (score >= 25) return 'low';
   return 'very_low';
 }
-
 export function getCompatibilityLevel(score: number): CompatibilityLevel {
   if (score >= 80) return 'highly_recommended';
   if (score >= 65) return 'recommended';
   if (score >= 50) return 'recommended_with_reserves';
   return 'not_recommended';
 }
-
 export function getScoreLevelLabel(level: ScoreLevel): string {
   const labels: Record<ScoreLevel, string> = {
     very_low: 'Muy Bajo',
@@ -25,7 +22,6 @@ export function getScoreLevelLabel(level: ScoreLevel): string {
   };
   return labels[level];
 }
-
 export function getCompatibilityLabel(level: CompatibilityLevel): string {
   const labels: Record<CompatibilityLevel, string> = {
     not_recommended: 'No Recomendable',
@@ -35,7 +31,6 @@ export function getCompatibilityLabel(level: CompatibilityLevel): string {
   };
   return labels[level];
 }
-
 export function getScoreColor(level: ScoreLevel): string {
   const colors: Record<ScoreLevel, string> = {
     very_low: 'text-red-600 bg-red-50',
@@ -46,7 +41,6 @@ export function getScoreColor(level: ScoreLevel): string {
   };
   return colors[level];
 }
-
 export function getCompatibilityColor(level: CompatibilityLevel): string {
   const colors: Record<CompatibilityLevel, string> = {
     not_recommended: 'text-red-600 bg-red-50 border-red-200',
@@ -56,7 +50,6 @@ export function getCompatibilityColor(level: CompatibilityLevel): string {
   };
   return colors[level];
 }
-
 export function getScoreBarColor(score: number): string {
   if (score >= 80) return 'bg-emerald-500';
   if (score >= 60) return 'bg-green-500';

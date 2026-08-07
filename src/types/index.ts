@@ -1,26 +1,7 @@
-export type CandidateStatus =
-'pending' |
-'in_progress' |
-'completed' |
-'rejected' |
-'hired';
-
-export type CompatibilityLevel =
-'not_recommended' |
-'recommended_with_reserves' |
-'recommended' |
-'highly_recommended';
-
+export type CandidateStatus = 'pending' | 'in_progress' | 'completed' | 'rejected' | 'hired';
+export type CompatibilityLevel = 'not_recommended' | 'recommended_with_reserves' | 'recommended' | 'highly_recommended';
 export type ScoreLevel = 'very_low' | 'low' | 'medium' | 'high' | 'very_high';
-
-export type PositionLevel =
-'operative' |
-'administrative' |
-'sales' |
-'supervisor' |
-'management' |
-'executive';
-
+export type PositionLevel = 'operative' | 'administrative' | 'sales' | 'supervisor' | 'management' | 'executive';
 export interface Candidate {
   id: string;
   name: string;
@@ -38,7 +19,6 @@ export interface Candidate {
   recommendation?: CompatibilityLevel;
   archived?: boolean;
 }
-
 export interface TestResult {
   testId: string;
   testName: string;
@@ -46,18 +26,15 @@ export interface TestResult {
   level: ScoreLevel;
   weight: number;
 }
-
 export interface FactorResult {
   name: string;
   score: number;
   level: ScoreLevel;
 }
-
 export interface Alert {
   type: 'risk' | 'warning' | 'info';
   message: string;
 }
-
 export interface Position {
   id: string;
   name: string;
@@ -67,12 +44,10 @@ export interface Position {
   minScore: number;
   archived?: boolean;
 }
-
 export interface TestWeight {
   testId: string;
   weight: number;
 }
-
 export interface PositionWeights {
   positionLevel: PositionLevel;
   weights: TestWeight[];

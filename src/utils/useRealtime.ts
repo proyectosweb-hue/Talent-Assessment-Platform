@@ -13,13 +13,13 @@ export function useRealtime({
 
 }: {table: string;onChange: () => void;}) {
   useEffect(() => {
-    const channel = supabase.
-    channel(`realtime-${table}`).
-    on('postgres_changes', { event: '*', schema: 'public', table }, () => {
+    const channel = supabase.channel(`realtime-${table}`).on('postgres_changes', {
+      event: '*',
+      schema: 'public',
+      table
+    }, () => {
       onChange();
-    }).
-    subscribe();
-
+    }).subscribe();
     return () => {
       supabase.removeChannel(channel);
     };
@@ -32,15 +32,13 @@ export function useRealtime({
  */
 export function useRealtimeMulti(tables: string[], onChange: () => void) {
   useEffect(() => {
-    const channels = tables.map((table) =>
-    supabase.
-    channel(`realtime-multi-${table}`).
-    on('postgres_changes', { event: '*', schema: 'public', table }, () => {
+    const channels = tables.map((table) => supabase.channel(`realtime-multi-${table}`).on('postgres_changes', {
+      event: '*',
+      schema: 'public',
+      table
+    }, () => {
       onChange();
-    }).
-    subscribe()
-    );
-
+    }).subscribe());
     return () => {
       channels.forEach((ch) => supabase.removeChannel(ch));
     };

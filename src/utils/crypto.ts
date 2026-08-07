@@ -12,10 +12,7 @@ export async function hashPassword(password: string): Promise<string> {
 /**
  * Verify a plain-text password against a SHA-256 hex hash.
  */
-export async function verifyPassword(
-password: string,
-hash: string)
-: Promise<boolean> {
+export async function verifyPassword(password: string, hash: string): Promise<boolean> {
   const hashed = await hashPassword(password);
   return hashed === hash;
 }
