@@ -48,6 +48,15 @@ function AppContent() {
     setCurrentPage('dashboard');
   };
 
+  // ⚠️ Este useCallback tiene que quedarse ARRIBA de los `return` de abajo.
+  // Si se declara después, sin sesión React cuenta un hook menos y al iniciar
+  // sesión cuenta uno más: eso es el error #310 ("rendered more hooks than
+  // during the previous render"), que reventaba la app justo al entrar.
+  const handleCandidateAdded = useCallback(() => {
+    setShowCandidateModal(false);
+    setRefreshKey((prev) => prev + 1);
+  }, []);
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -75,11 +84,6 @@ function AppContent() {
   const handleAddNewCandidate = () => {
     setShowCandidateModal(true);
   };
-
-  const handleCandidateAdded = useCallback(() => {
-    setShowCandidateModal(false);
-    setRefreshKey((prev) => prev + 1);
-  }, []);
 
   const handleApplyTest = (testId: string, candidateId: string) => {
     setTestId(testId);
