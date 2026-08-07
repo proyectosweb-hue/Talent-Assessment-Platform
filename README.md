@@ -7,9 +7,10 @@ como base de datos.
 
 ## 1. Conectar la base de datos
 
-La app ya **no** lleva las credenciales dentro del código: se leen del archivo
-`.env` que está en la raíz del proyecto. Para conectarla a tu proyecto de
-Supabase solo hay que rellenar dos valores.
+El proyecto viene conectado de fábrica: `src/supabase.ts` trae las credenciales
+como valores por defecto, así que la app funciona recién clonada. Para apuntarla
+a **otro** proyecto de Supabase basta con rellenar el `.env` de la raíz — no hay
+que tocar código.
 
 ### Dónde encontrar los datos
 
@@ -33,8 +34,14 @@ VITE_SUPABASE_ANON_KEY=eyJhbGciOi...
 Luego reinicia el servidor (`npm run dev`). Vite solo lee estas variables al
 arrancar, así que **un cambio en el `.env` no surte efecto hasta reiniciar**.
 
-> Si el `.env` está vacío o mal escrito, la app arranca igual y muestra una
-> barra roja arriba explicando qué falta — no se queda en blanco.
+> Si el `.env` está vacío o ausente, la app usa las credenciales por defecto de
+> `src/supabase.ts` en vez de fallar.
+>
+> Esa doble vía es deliberada: `import.meta.env` solo existe cuando **Vite**
+> compila el proyecto. En entornos que sirven el código sin ese paso (la vista
+> previa de Magic Patterns, por ejemplo) llega como `undefined`, y leerlo
+> directamente tumbaba la app entera con
+> `Cannot read properties of undefined (reading 'VITE_SUPABASE_URL')`.
 
 > ⚠️ Solo la clave **anon** va aquí. Es pública (viaja en el JavaScript del
 > navegador) y está protegida por las políticas RLS. La clave `service_role`
