@@ -3,50 +3,48 @@ import { createClient } from '@supabase/supabase-js';
 /**
  * Conexión a Supabase.
  *
- * Las credenciales se leen del archivo `.env` que está en la RAÍZ del proyecto
- * (Vite solo expone las variables que empiezan con `VITE_`). Para conectar otro
- * proyecto de Supabase no hay que tocar este archivo: basta con cambiar el .env.
+ * Las credenciales viven aquí como valores por defecto y se pueden sobrescribir
+ * desde el archivo `.env` de la raíz del proyecto.
  *
- *   1. Copia `.env.example` y renómbralo a `.env`
- *   2. Pega ahí la URL y la anon key de tu proyecto
- *      (panel de Supabase → Project Settings → API)
- *   3. Reinicia el servidor de desarrollo (`npm run dev`)
+ * Por qué las dos vías: `import.meta.env` solo existe cuando Vite compila el
+ * proyecto. En entornos que sirven el código sin ese paso (la vista previa de
+ * Magic Patterns, por ejemplo) `import.meta.env` llega como `undefined`, y
+ * leerlo directamente rompe la app entera al arrancar. Con los valores por
+ * defecto la app siempre conecta, y quien quiera apuntar a otro proyecto solo
+ * edita el `.env`.
+ *
+ * Estas dos credenciales son públicas por diseño: viajan dentro del JavaScript
+ * que se descarga en el navegador, y lo que realmente protege los datos son las
+ * políticas RLS de la base. La clave `service_role` NUNCA debe ponerse aquí.
  */
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL?.trim() ?? '';
-const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY?.trim() ?? '';
+const DEFAULT_SUPABASE_URL = 'https://ztifzpwzojigbmkhnaix.supabase.co';
+const DEFAULT_SUPABASE_ANON_KEY =
+'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp0aWZ6cHd6b2ppZ2Jta2huYWl4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcwMzc5NzMsImV4cCI6MjA5MjYxMzk3M30.zY6gGAsOCDXz6DPF9_5KVY11GpDctjKnd-GxOLEd31s';
 
-/** `true` cuando el .env tiene ambas variables cargadas. */
-export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseKey);
-
-const MISSING_CONFIG_MESSAGE =
-  'Faltan las credenciales de Supabase. Crea un archivo .env en la raíz del ' +
-  'proyecto con VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY (ver .env.example) ' +
-  'y reinicia el servidor de desarrollo.';
-
-if (!isSupabaseConfigured) {
-  console.error(`[Supabase] ${MISSING_CONFIG_MESSAGE}`);
-
-  // Aviso visible en pantalla: sin esto la app arranca pero todas las consultas
-  // fallan con errores de red y no queda claro por qué.
-  if (typeof document !== 'undefined') {
-    const showBanner = () => {
-      const banner = document.createElement('div');
-      banner.setAttribute('role', 'alert');
-      banner.style.cssText =
-        'position:fixed;inset:0 0 auto 0;z-index:99999;padding:14px 20px;' +
-        'background:#b91c1c;color:#fff;font:600 14px/1.5 system-ui,sans-serif;' +
-        'text-align:center;box-shadow:0 2px 12px rgba(0,0,0,.35)';
-      banner.textContent = MISSING_CONFIG_MESSAGE;
-      document.body.appendChild(banner);
+/**
+ * Lee las variables del `.env` sin asumir que `import.meta.env` exista.
+ *
+ * Los nombres se escriben completos y literales a propósito: Vite sustituye
+ * `import.meta.env.VITE_ALGO` por su valor en tiempo de compilación buscando
+ * ese texto exacto. Con un acceso dinámico (`env[nombre]`) la sustitución no
+ * ocurre y el `.env` se ignora en silencio.
+ *
+ * Donde no hay compilación de Vite, `import.meta.env` es `undefined` y leer una
+ * propiedad suya lanza un TypeError: eso es justo lo que atrapa el `catch`.
+ */
+function readEnvVars(): {url: string;key: string;} {
+  try {
+    return {
+      url: (import.meta.env.VITE_SUPABASE_URL || '').trim(),
+      key: (import.meta.env.VITE_SUPABASE_ANON_KEY || '').trim()
     };
-    if (document.body) showBanner();
-    else document.addEventListener('DOMContentLoaded', showBanner);
+  } catch {
+    return { url: '', key: '' };
   }
 }
 
-// Valores de reserva para que `createClient` no lance y la app siga montando:
-// así el usuario ve el aviso de arriba en vez de una pantalla en blanco.
-export const supabase = createClient(
-  supabaseUrl || 'http://localhost:54321',
-  supabaseKey || 'anon-key-no-configurada'
-);
+const fromEnv = readEnvVars();
+const supabaseUrl = fromEnv.url || DEFAULT_SUPABASE_URL;
+const supabaseKey = fromEnv.key || DEFAULT_SUPABASE_ANON_KEY;
+
+export const supabase = createClient(supabaseUrl, supabaseKey);
