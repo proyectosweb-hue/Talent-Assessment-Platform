@@ -56,6 +56,12 @@ viene en la carpeta `supabase/`:
 Ambos archivos son **idempotentes**: se pueden ejecutar varias veces sin
 duplicar ni borrar datos.
 
+> ⚠️ `schema.sql` usa `create table if not exists`. Si una tabla **ya existía**,
+> la deja intacta — aunque le falte alguna columna que la app necesita. Para
+> descartar eso, ejecuta [`supabase/verificar.sql`](supabase/verificar.sql):
+> es de solo lectura y reporta tablas ausentes, columnas faltantes, estado de
+> RLS y si hay algún usuario que pueda iniciar sesión.
+
 ### Usuario de acceso que crea el seed
 
 | Correo              | Contraseña |
