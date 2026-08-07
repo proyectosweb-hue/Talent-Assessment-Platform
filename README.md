@@ -56,8 +56,12 @@ viene en la carpeta `supabase/`:
 
 1. En el panel de Supabase → **SQL Editor** → **New query**.
 2. Pega el contenido de [`supabase/schema.sql`](supabase/schema.sql) → **Run**.
-   Crea las 8 tablas, los índices, el bucket `logos` y las políticas RLS.
-3. *(Opcional)* Pega [`supabase/seed.sql`](supabase/seed.sql) → **Run**.
+   Crea las 8 tablas base, los índices, el bucket `logos` y las políticas RLS.
+3. Pega [`supabase/schema-v2.sql`](supabase/schema-v2.sql) → **Run**.
+   Añade las 5 tablas que necesitan las pantallas de Roles y permisos, Grupos
+   de pruebas y Auditoría: `roles`, `test_groups`, `test_group_tests`,
+   `test_group_candidates` y `audit_logs`. **Sin esto esas pantallas fallan.**
+4. *(Opcional)* Pega [`supabase/seed.sql`](supabase/seed.sql) → **Run**.
    Crea el usuario de acceso y datos de ejemplo.
 
 Ambos archivos son **idempotentes**: se pueden ejecutar varias veces sin
@@ -116,6 +120,11 @@ Otros comandos:
 | `tests`                 | Pruebas psicométricas                                        |
 | `questions`             | Preguntas de cada prueba (`options` es JSON)                |
 | `results`               | Resultados de pruebas aplicadas                              |
+| `roles`                 | Roles y sus permisos por módulo (`permissions` es JSON)      |
+| `test_groups`           | Baterías de pruebas que se aplican juntas                    |
+| `test_group_tests`      | Qué pruebas lleva cada grupo                                 |
+| `test_group_candidates` | A qué candidatos se asignó cada grupo                        |
+| `audit_logs`            | Bitácora de acciones (pantalla de Auditoría)                 |
 
 Detalle de cada columna y sus valores permitidos:
 [`supabase/schema.sql`](supabase/schema.sql).

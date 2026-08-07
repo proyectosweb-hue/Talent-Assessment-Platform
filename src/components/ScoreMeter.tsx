@@ -22,26 +22,19 @@ export function ScoreMeter({
     md: 'text-sm',
     lg: 'text-base'
   };
-  return (
-    <div className="w-full">
-      {showLabel && label &&
-      <div className="flex justify-between items-center mb-1.5">
+  return <div className="w-full">
+      {showLabel && label && <div className="flex justify-between items-center mb-1.5">
           <span className={`font-medium text-gray-700 ${textSizes[size]}`}>
             {label}
           </span>
           <span className={`font-bold text-gray-900 ${textSizes[size]}`}>
             {score}
           </span>
-        </div>
-      }
+        </div>}
       <div className="relative w-full bg-gray-200 rounded-full overflow-hidden">
-        <div
-          className={`${heights[size]} ${getScoreBarColor(score)} rounded-full transition-all duration-500`}
-          style={{
-            width: `${score}%`
-          }} />
-        
+        <div className={`${heights[size]} ${getScoreBarColor(score)} rounded-full transition-all duration-500`} style={{
+        width: `${score}%`
+      }} />
       </div>
-    </div>);
-
+    </div>;
 }

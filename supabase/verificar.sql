@@ -46,7 +46,23 @@ with esperado (tabla, columna) as (
     ('questions', 'weight'),
 
     ('results', 'id'), ('results', 'test_id'), ('results', 'user_name'),
-    ('results', 'answers'), ('results', 'score'), ('results', 'created_at')
+    ('results', 'answers'), ('results', 'score'), ('results', 'created_at'),
+
+    -- ── tablas de la version 2 (ver schema-v2.sql) ──────────────────────
+    ('roles', 'id'), ('roles', 'name'), ('roles', 'description'),
+    ('roles', 'permissions'),
+
+    ('test_groups', 'id'), ('test_groups', 'name'), ('test_groups', 'description'),
+
+    ('test_group_tests', 'group_id'), ('test_group_tests', 'test_id'),
+
+    ('test_group_candidates', 'group_id'), ('test_group_candidates', 'candidate_id'),
+
+    ('audit_logs', 'id'), ('audit_logs', 'user_name'), ('audit_logs', 'user_email'),
+    ('audit_logs', 'user_role'), ('audit_logs', 'action'), ('audit_logs', 'module'),
+    ('audit_logs', 'description'), ('audit_logs', 'entity_id'),
+    ('audit_logs', 'entity_name'), ('audit_logs', 'metadata'),
+    ('audit_logs', 'created_at')
 ),
 tablas as (select distinct tabla from esperado)
 
@@ -60,7 +76,10 @@ select * from (
     case when cl.oid is null then 'NO EXISTE' else 'ok' end as estado,
     case
       when cl.oid is null then
-        'Falta la tabla: ejecuta schema.sql'
+        case when t.tabla in ('roles', 'test_groups', 'test_group_tests',
+                              'test_group_candidates', 'audit_logs')
+             then 'Falta la tabla: ejecuta schema-v2.sql'
+             else 'Falta la tabla: ejecuta schema.sql' end
       when not cl.relrowsecurity then
         'RLS desactivado (la app lee, pero la tabla queda abierta)'
       when (select count(*) from pg_policies p

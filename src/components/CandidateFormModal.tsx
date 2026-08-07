@@ -1,326 +1,219 @@
-import React, { useState } from 'react';
-import {
-  XIcon,
-  UserIcon,
-  BriefcaseIcon,
-  MailIcon,
-  PhoneIcon } from
-'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { XIcon, UserIcon, BriefcaseIcon, MailIcon, PhoneIcon, Loader2Icon, CheckIcon, ChevronRightIcon, ChevronLeftIcon } from 'lucide-react';
 import { useToast } from './Toast';
 import { supabase } from '../supabase';
+import { logAudit } from '../utils/useAudit';
+
+const TR = { blue: '#2D4494', navy: '#1a2d6b', green: '#7DB928', greenDark: '#5e8c1e' };
+
 interface CandidateFormModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess?: () => void;
 }
-export function CandidateFormModal({
-  isOpen,
-  onClose,
-  onSuccess
-}: CandidateFormModalProps) {
+
+const inputBase = "w-full px-4 py-2.5 border rounded-xl text-sm outline-none transition-all bg-gray-50 focus:bg-white placeholder:text-gray-300";
+const inputStyle = { borderColor: '#e5e7eb' };
+
+const Field = ({ label, children }: {label: string;children: React.ReactNode;}) =>
+<div>
+    <label className="block text-xs font-bold uppercase tracking-wider text-gray-400 mb-1.5">{label}</label>
+    {children}
+  </div>;
+
+
+export function CandidateFormModal({ isOpen, onClose, onSuccess }: CandidateFormModalProps) {
   const { showToast } = useToast();
+  const [step, setStep] = useState<1 | 2>(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [formData, setFormData] = useState({
-    name: '',
-    email: '',
-    phone: '',
-    age: '',
-    gender: 'M',
-    education: '',
-    position: '',
-    document: ''
+  const [positions, setPositions] = useState<{id: string;name: string;}[]>([]);
+  const [loadingPositions, setLoadingPositions] = useState(false);
+  const [form, setForm] = useState({
+    name: '', document: '', age: '', gender: 'M', education: '',
+    email: '', phone: '', position: ''
   });
+
+  // Cargar puestos reales de Supabase al abrir
+  useEffect(() => {
+    if (!isOpen) return;
+    setLoadingPositions(true);
+    supabase.
+    from('positions').
+    select('id, name').
+    or('archived.eq.false,archived.is.null').
+    order('name').
+    then(({ data }) => setPositions(data || [])).
+    finally(() => setLoadingPositions(false));
+  }, [isOpen]);
+
+  if (!isOpen) return null;
+
+  const set = (k: string, v: string) => setForm((p) => ({ ...p, [k]: v }));
+  const step1Valid = form.name.trim() && form.document.trim() && form.age && form.education;
+  const step2Valid = form.email.trim() && form.phone.trim() && form.position;
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
     try {
-      // Solo insertamos los campos que existen en la tabla de Supabase
-      const candidateData = {
-        name: formData.name,
-        email: formData.email,
-        position: formData.position,
-        status: 'pending',
-        compatibility: 0
-      };
-      const { data, error } = await supabase.
-      from('candidates').
-      insert([candidateData]).
-      select();
+      const { error } = await supabase.from('candidates').insert([{
+        name: form.name.trim(), email: form.email.trim(),
+        position: form.position, status: 'pending', compatibility: 0
+      }]);
       if (error) throw error;
-      showToast(`Candidato creado exitosamente: ${formData.name}`, 'success');
-      // Reset form
-      setFormData({
-        name: '',
-        email: '',
-        phone: '',
-        age: '',
-        gender: 'M',
-        education: '',
-        position: '',
-        document: ''
+
+      // ── Auditoría ──────────────────────────────────────────
+      await logAudit({
+        action: 'CREATE',
+        module: 'candidates',
+        description: `Candidato "${form.name}" registrado para el puesto "${form.position}"`,
+        entity_name: form.name,
+        metadata: { email: form.email, position: form.position, education: form.education }
       });
-      // Call onSuccess to trigger refresh
-      if (onSuccess) {
-        onSuccess();
-      }
+
+      showToast(`Candidato "${form.name}" registrado`, 'success');
+      setForm({ name: '', document: '', age: '', gender: 'M', education: '', email: '', phone: '', position: '' });
+      setStep(1);
+      if (onSuccess) onSuccess();
       onClose();
-    } catch (error: any) {
-      console.error('Error al crear candidato:', error);
-      showToast(`Error: ${error.message}`, 'error');
-    } finally {
-      setIsSubmitting(false);
-    }
+    } catch (err: any) {
+      showToast(`Error: ${err.message}`, 'error');
+    } finally {setIsSubmitting(false);}
   };
-  if (!isOpen) return null;
+
+  const handleClose = () => {setStep(1);onClose();};
+
   return (
-    <div
-      className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50"
-      onClick={onClose}>
-      
-      <div
-        className="bg-white rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
-        onClick={(e) => e.stopPropagation()}>
-        
-        <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
-              <UserIcon className="w-5 h-5 text-blue-600" />
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50" onClick={handleClose}>
+      <div className="bg-white rounded-3xl max-w-lg w-full shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}
+      style={{ maxHeight: '92vh', display: 'flex', flexDirection: 'column' }}>
+
+        {/* Header */}
+        <div className="relative flex-shrink-0" style={{ background: `linear-gradient(135deg, ${TR.navy} 0%, ${TR.blue} 100%)` }}>
+          <div className="absolute -right-10 -top-10 w-40 h-40 rounded-full opacity-10 bg-white" />
+          <div className="relative z-10 px-7 pt-6 pb-5">
+            <div className="flex items-start justify-between mb-5">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-xl flex items-center justify-center bg-white/15"><UserIcon className="w-5 h-5 text-white" /></div>
+                <div>
+                  <h2 className="text-lg font-black text-white leading-tight">Nuevo Candidato</h2>
+                  <p className="text-white/50 text-xs mt-0.5">Registrar para evaluación psicométrica</p>
+                </div>
+              </div>
+              <button onClick={handleClose} className="p-2 rounded-xl bg-white/10 hover:bg-white/20 transition-colors"><XIcon className="w-4 h-4 text-white" /></button>
             </div>
-            <div>
-              <h2 className="text-xl font-bold text-gray-900">
-                Nuevo Candidato
-              </h2>
-              <p className="text-sm text-gray-600">
-                Registrar candidato para evaluación
-              </p>
+            {/* Stepper */}
+            <div className="flex items-center gap-0">
+              {([{ n: 1, label: 'Información Personal' }, { n: 2, label: 'Contacto y Puesto' }] as const).map((s, i) =>
+              <React.Fragment key={s.n}>
+                  <div className="flex items-center gap-2">
+                    <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-black flex-shrink-0"
+                  style={{ background: step > s.n ? TR.green : step === s.n ? '#ffffff' : 'rgba(255,255,255,0.2)', color: step > s.n ? '#fff' : step === s.n ? TR.blue : 'rgba(255,255,255,0.45)' }}>
+                      {step > s.n ? <CheckIcon className="w-3.5 h-3.5" /> : s.n}
+                    </div>
+                    <span className="text-xs font-semibold hidden sm:block" style={{ color: step === s.n ? 'white' : 'rgba(255,255,255,0.4)' }}>{s.label}</span>
+                  </div>
+                  {i === 0 && <div className="flex-1 h-px mx-3" style={{ background: step > 1 ? TR.green : 'rgba(255,255,255,0.2)' }} />}
+                </React.Fragment>
+              )}
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
-            
-            <XIcon className="w-5 h-5 text-gray-500" />
-          </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-6">
-          {/* Información Personal */}
-          <div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">
-              Información Personal
-            </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Nombre Completo *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={formData.name}
-                  onChange={(e) =>
-                  setFormData({
-                    ...formData,
-                    name: e.target.value
-                  })
-                  }
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Ej: María González Pérez" />
-                
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Documento de Identidad *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={formData.document}
-                  onChange={(e) =>
-                  setFormData({
-                    ...formData,
-                    document: e.target.value
-                  })
-                  }
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="RFC o ID" />
-                
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Edad *
-                </label>
-                <input
-                  type="number"
-                  required
-                  min="18"
-                  max="100"
-                  value={formData.age}
-                  onChange={(e) =>
-                  setFormData({
-                    ...formData,
-                    age: e.target.value
-                  })
-                  }
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Ej: 30" />
-                
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Género *
-                </label>
-                <select
-                  required
-                  value={formData.gender}
-                  onChange={(e) =>
-                  setFormData({
-                    ...formData,
-                    gender: e.target.value
-                  })
-                  }
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                  
-                  <option value="M">Masculino</option>
-                  <option value="F">Femenino</option>
-                  <option value="Other">Otro</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Escolaridad *
-                </label>
-                <select
-                  required
-                  value={formData.education}
-                  onChange={(e) =>
-                  setFormData({
-                    ...formData,
-                    education: e.target.value
-                  })
-                  }
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                  
-                  <option value="">Seleccionar...</option>
-                  <option value="Secundaria">Secundaria</option>
-                  <option value="Preparatoria">Preparatoria</option>
-                  <option value="Técnico">Técnico</option>
-                  <option value="Licenciatura">Licenciatura</option>
-                  <option value="Maestría">Maestría</option>
-                  <option value="Doctorado">Doctorado</option>
-                </select>
-              </div>
-            </div>
-          </div>
-
-          {/* Información de Contacto */}
-          <div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">
-              Información de Contacto
-            </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Email *
-                </label>
-                <div className="relative">
-                  <MailIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                  <input
-                    type="email"
-                    required
-                    value={formData.email}
-                    onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      email: e.target.value
-                    })
-                    }
-                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="correo@ejemplo.com" />
-                  
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
+          <div className="flex-1 overflow-y-auto px-7 py-5 space-y-4">
+            {step === 1 &&
+            <>
+                <Field label="Nombre Completo *"><input type="text" required value={form.name} onChange={(e) => set('name', e.target.value)} className={inputBase} style={inputStyle} placeholder="Ej: María González Pérez" /></Field>
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="Documento *"><input type="text" required value={form.document} onChange={(e) => set('document', e.target.value)} className={inputBase} style={inputStyle} placeholder="RFC o ID" /></Field>
+                  <Field label="Edad *"><input type="number" required min="18" max="100" value={form.age} onChange={(e) => set('age', e.target.value)} className={inputBase} style={inputStyle} placeholder="30" /></Field>
                 </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Teléfono *
-                </label>
-                <div className="relative">
-                  <PhoneIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                  <input
-                    type="tel"
-                    required
-                    value={formData.phone}
-                    onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      phone: e.target.value
-                    })
-                    }
-                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="+52 55 1234 5678" />
-                  
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="Género *">
+                    <select required value={form.gender} onChange={(e) => set('gender', e.target.value)} className={inputBase} style={inputStyle}>
+                      <option value="M">Masculino</option><option value="F">Femenino</option><option value="Other">Otro</option>
+                    </select>
+                  </Field>
+                  <Field label="Escolaridad *">
+                    <select required value={form.education} onChange={(e) => set('education', e.target.value)} className={inputBase} style={inputStyle}>
+                      <option value="">Seleccionar...</option>
+                      <option>Secundaria</option><option>Preparatoria</option><option>Técnico</option>
+                      <option>Licenciatura</option><option>Maestría</option><option>Doctorado</option>
+                    </select>
+                  </Field>
                 </div>
-              </div>
-            </div>
+              </>
+            }
+            {step === 2 &&
+            <>
+                <Field label="Email *">
+                  <div className="relative">
+                    <MailIcon className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-300 pointer-events-none" />
+                    <input type="email" required value={form.email} onChange={(e) => set('email', e.target.value)} className={`${inputBase} pl-10`} style={inputStyle} placeholder="correo@ejemplo.com" />
+                  </div>
+                </Field>
+                <Field label="Teléfono *">
+                  <div className="relative">
+                    <PhoneIcon className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-300 pointer-events-none" />
+                    <input type="tel" required value={form.phone} onChange={(e) => set('phone', e.target.value)} className={`${inputBase} pl-10`} style={inputStyle} placeholder="+52 55 1234 5678" />
+                  </div>
+                </Field>
+                <Field label="Puesto Aplicado *">
+                  <div className="relative">
+                    <BriefcaseIcon className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-300 pointer-events-none" />
+                    <select required value={form.position} onChange={(e) => set('position', e.target.value)}
+                  className={`${inputBase} pl-10`} style={inputStyle}
+                  disabled={loadingPositions}>
+                      <option value="">
+                        {loadingPositions ? 'Cargando puestos...' : 'Seleccionar puesto...'}
+                      </option>
+                      {positions.map((p) =>
+                    <option key={p.id} value={p.name}>{p.name}</option>
+                    )}
+                      {!loadingPositions && positions.length === 0 &&
+                    <option disabled>No hay puestos activos. Crea uno en Puestos.</option>
+                    }
+                    </select>
+                  </div>
+                </Field>
+                <div className="p-4 rounded-2xl" style={{ background: `${TR.blue}06`, border: `1px solid ${TR.blue}12` }}>
+                  <p className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-3">Resumen</p>
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl flex items-center justify-center text-white text-sm font-black flex-shrink-0" style={{ background: `linear-gradient(135deg, ${TR.blue}, ${TR.navy})` }}>
+                      {form.name.substring(0, 2).toUpperCase() || 'NC'}
+                    </div>
+                    <div>
+                      <p className="font-bold text-sm text-gray-900">{form.name || 'Sin nombre'}</p>
+                      <p className="text-xs text-gray-400">{form.education || '—'} · {form.age ? `${form.age} años` : '—'}</p>
+                    </div>
+                  </div>
+                </div>
+              </>
+            }
           </div>
+          <div className="flex-shrink-0 px-7 py-4 border-t border-gray-100 flex items-center justify-between gap-3 bg-gray-50/50">
+            {step === 1 ?
+            <>
+                <button type="button" onClick={handleClose} className="px-5 py-2.5 border border-gray-200 rounded-xl font-semibold text-sm text-gray-600 hover:bg-gray-100">Cancelar</button>
+                <button type="button" onClick={() => setStep(2)} disabled={!step1Valid}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm text-white disabled:opacity-40"
+              style={{ background: step1Valid ? `linear-gradient(135deg, ${TR.blue}, ${TR.navy})` : '#94a3b8' }}>
+                  Siguiente <ChevronRightIcon className="w-4 h-4" />
+                </button>
+              </> :
 
-          {/* Información del Puesto */}
-          <div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">
-              Puesto Aplicado
-            </h3>
-            <div className="relative">
-              <BriefcaseIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-              <select
-                required
-                value={formData.position}
-                onChange={(e) =>
-                setFormData({
-                  ...formData,
-                  position: e.target.value
-                })
-                }
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                
-                <option value="">Seleccionar puesto...</option>
-                <option value="Gerente de Ventas">Gerente de Ventas</option>
-                <option value="Supervisor de Producción">
-                  Supervisor de Producción
-                </option>
-                <option value="Ejecutivo de Ventas">Ejecutivo de Ventas</option>
-                <option value="Asistente Administrativo">
-                  Asistente Administrativo
-                </option>
-                <option value="Director de Operaciones">
-                  Director de Operaciones
-                </option>
-                <option value="Coordinador de RRHH">Coordinador de RRHH</option>
-              </select>
-            </div>
-          </div>
-
-          {/* Botones */}
-          <div className="flex items-center justify-end space-x-3 pt-4 border-t border-gray-200">
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={isSubmitting}
-              className="px-6 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors font-medium disabled:opacity-50">
-              
-              Cancelar
-            </button>
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">
-              
-              {isSubmitting ? 'Guardando...' : 'Crear Candidato'}
-            </button>
+            <>
+                <button type="button" onClick={() => setStep(1)} className="flex items-center gap-2 px-5 py-2.5 border border-gray-200 rounded-xl font-semibold text-sm text-gray-600 hover:bg-gray-100">
+                  <ChevronLeftIcon className="w-4 h-4" /> Atrás
+                </button>
+                <button type="submit" disabled={isSubmitting || !step2Valid}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm text-white shadow-md disabled:opacity-50"
+              style={{ background: step2Valid ? `linear-gradient(135deg, ${TR.green}, ${TR.greenDark})` : '#94a3b8', boxShadow: step2Valid ? `0 4px 12px ${TR.green}40` : 'none' }}>
+                  {isSubmitting ? <><Loader2Icon className="w-4 h-4 animate-spin" /> Guardando...</> : <><CheckIcon className="w-4 h-4" /> Crear Candidato</>}
+                </button>
+              </>
+            }
           </div>
         </form>
       </div>
