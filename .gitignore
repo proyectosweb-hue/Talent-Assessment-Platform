@@ -12,6 +12,13 @@ dist
 dist-ssr
 *.local
 
+# Variables de entorno.
+# `.env` SÍ se versiona: solo lleva la URL y la anon key de Supabase, que son
+# públicas (viajan en el bundle del navegador) y están protegidas por RLS.
+# Cualquier valor secreto (service_role key, etc.) va en .env.local, que queda
+# fuera de git por la regla `*.local` de arriba.
+.env.*.local
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

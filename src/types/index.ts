@@ -63,6 +63,7 @@ export interface Position {
   level: PositionLevel;
   activeVacancies: number;
   minScore: number;
+  archived?: boolean;
 }
 
 export interface TestWeight {
