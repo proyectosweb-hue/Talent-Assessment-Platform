@@ -64,6 +64,9 @@ const MAIN_MODULES = [{
   module: 'tests',
   label: 'Pruebas'
 }, {
+  module: 'monitor',
+  label: 'Monitoreo en Vivo'
+}, {
   module: 'results',
   label: 'Resultados'
 }, {

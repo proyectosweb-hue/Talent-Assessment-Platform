@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { LayoutDashboardIcon, UsersIcon, BriefcaseIcon, ClipboardListIcon, BarChart3Icon, FileTextIcon, SettingsIcon, MenuIcon, XIcon, LogOutIcon, ChevronRightIcon, ShieldCheckIcon } from 'lucide-react';
+import { LayoutDashboardIcon, UsersIcon, BriefcaseIcon, ClipboardListIcon, BarChart3Icon, FileTextIcon, SettingsIcon, MenuIcon, XIcon, LogOutIcon, ChevronRightIcon, ShieldCheckIcon, RadioIcon } from 'lucide-react';
 import { supabase } from '../supabase';
 const SETTINGS_ID = '00000000-0000-0000-0000-000000000001';
 const TR = {
@@ -75,6 +75,10 @@ export function Layout({
     id: 'tests',
     label: 'Pruebas',
     icon: ClipboardListIcon
+  }, {
+    id: 'monitor',
+    label: 'Monitoreo en Vivo',
+    icon: RadioIcon
   }, {
     id: 'results',
     label: 'Resultados',
