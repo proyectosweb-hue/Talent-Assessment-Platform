@@ -11,6 +11,7 @@ import { Results } from './pages/Results';
 import { Reports } from './pages/Reports';
 import { Settings } from './pages/Settings';
 import { Audit } from './pages/Audit';
+import { LiveMonitor } from './pages/LiveMonitor';
 import { TestApplication } from './pages/TestApplication';
 import { Candidate } from './types';
 import { Login } from './login';
@@ -475,6 +476,7 @@ function AppContent() {
         {currentPage === 'results' && <Results permission={getPerm('results')} />}
         {currentPage === 'reports' && <Reports permission={getPerm('reports')} />}
         {currentPage === 'settings' && <Settings permissionsMap={permissionsMap} />}
+        {currentPage === 'monitor' && <LiveMonitor />}
         {currentPage === 'audit' && <Audit />}
       </Layout>;
   };

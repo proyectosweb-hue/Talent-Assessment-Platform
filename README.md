@@ -61,7 +61,10 @@ viene en la carpeta `supabase/`:
    Añade las 5 tablas que necesitan las pantallas de Roles y permisos, Grupos
    de pruebas y Auditoría: `roles`, `test_groups`, `test_group_tests`,
    `test_group_candidates` y `audit_logs`. **Sin esto esas pantallas fallan.**
-4. *(Opcional)* Pega [`supabase/seed.sql`](supabase/seed.sql) → **Run**.
+4. Pega [`supabase/schema-v3.sql`](supabase/schema-v3.sql) → **Run**.
+   Crea `test_progress`, que alimenta la pantalla de **Monitoreo en Vivo**, y
+   registra la tabla en Realtime. Sin esto esa pantalla te dirá qué falta.
+5. *(Opcional)* Pega [`supabase/seed.sql`](supabase/seed.sql) → **Run**.
    Crea el usuario de acceso y datos de ejemplo.
 
 Ambos archivos son **idempotentes**: se pueden ejecutar varias veces sin
@@ -125,12 +128,32 @@ Otros comandos:
 | `test_group_tests`      | Qué pruebas lleva cada grupo                                 |
 | `test_group_candidates` | A qué candidatos se asignó cada grupo                        |
 | `audit_logs`            | Bitácora de acciones (pantalla de Auditoría)                 |
+| `test_progress`         | Avance de una prueba **mientras se contesta** (Monitoreo)    |
 
 Detalle de cada columna y sus valores permitidos:
 [`supabase/schema.sql`](supabase/schema.sql).
 
-Dos particularidades heredadas del diseño original, documentadas para que no
-sorprendan:
+### Monitoreo en Vivo
+
+La pantalla **Monitoreo en Vivo** muestra las respuestas de los candidatos
+según las van marcando, sin esperar a que envíen la prueba.
+
+Cómo funciona: la pantalla del examen ya guardaba su avance en el
+`localStorage` del candidato para poder reanudar. Ahora, además, lo publica en
+`test_progress` en cada respuesta, y el monitor se suscribe a esa tabla por
+Realtime. Si Realtime no estuviera habilitado, el monitor refresca solo cada
+10 segundos, así que funciona igual.
+
+La publicación del avance **nunca interrumpe el examen**: si la tabla no existe
+o falla la red, el error se ignora y el candidato sigue contestando. El
+respaldo para reanudar sigue siendo el `localStorage`.
+
+Una sesión se marca **Inactivo** si pasan más de 2 minutos sin recibir nada de
+ese candidato, y desaparece del monitor cuando la prueba se envía.
+
+### Particularidades
+
+Dos cosas heredadas del diseño original, documentadas para que no sorprendan:
 
 - `results.user_name` guarda el **ID del candidato en texto**, no su nombre.
   Por eso no es una llave foránea.

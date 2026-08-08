@@ -198,6 +198,9 @@ export function TestApplication({
   const [current, setCurrent] = useState(0);
   const [answers, setAnswers] = useState<Record<string, number>>({});
   const answersRef = useRef<Record<string, number>>({});
+  // Total de preguntas en un ref: publishProgress no depende de `questions`,
+  // así que leerlo del estado le daría un valor viejo.
+  const questionsRef = useRef<number>(0);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [timeLeft, setTimeLeft] = useState(0);
@@ -222,6 +225,7 @@ export function TestApplication({
       }] = await Promise.all([supabase.from('tests').select('*').eq('id', testId).single(), supabase.from('questions').select('*').eq('test_id', testId)]);
       setTest(testData);
       setQuestions(questionsData || []);
+      questionsRef.current = (questionsData || []).length;
 
       // Detectar progreso guardado
       const saved = loadProgress(String(testId), String(candidateId));
@@ -237,6 +241,33 @@ export function TestApplication({
   };
 
   // ── Guardar progreso automáticamente cada vez que cambia algo ──
+  /**
+   * Publica el avance en `test_progress` para que la pantalla de Monitoreo en
+   * Vivo pueda seguir la prueba mientras se contesta.
+   *
+   * Nunca debe interrumpir el examen: si la tabla no existe todavía (falta
+   * ejecutar schema-v3.sql) o falla la red, el error se traga y el candidato
+   * sigue igual. El respaldo real para reanudar es el localStorage.
+   */
+  const publishProgress = useCallback(async (currentAnswers: Record<string, number>, currentIndex: number, currentTimeLeft: number, status: 'in_progress' | 'finished' = 'in_progress') => {
+    if (!testId || !candidateId) return;
+    try {
+      await supabase.from('test_progress').upsert({
+        test_id: testId,
+        candidate_id: candidateId,
+        answers: currentAnswers,
+        current_question: currentIndex,
+        total_questions: questionsRef.current,
+        time_left: currentTimeLeft,
+        status,
+        updated_at: new Date().toISOString()
+      }, {
+        onConflict: 'test_id,candidate_id'
+      });
+    } catch {
+      // Monitoreo no disponible; el examen continúa igual.
+    }
+  }, [testId, candidateId]);
   const persistProgress = useCallback((currentAnswers: Record<string, number>, currentIndex: number, currentTimeLeft: number) => {
     if (!testId || !candidateId || phase !== 'exam') return;
     const data: SavedProgress = {
@@ -249,7 +280,8 @@ export function TestApplication({
       startedAt: Date.now()
     };
     saveProgress(data);
-  }, [testId, candidateId, phase]);
+    publishProgress(currentAnswers, currentIndex, currentTimeLeft);
+  }, [testId, candidateId, phase, publishProgress]);
 
   // ── Timer — solo cuando el examen está activo ──────────────────
   useEffect(() => {
@@ -282,6 +314,9 @@ export function TestApplication({
     setTimeLeft((test?.duration || 45) * 60);
     setPhase('exam');
     setTimerActive(true);
+    // Abre la sesión en el monitoreo desde el primer segundo, aunque el
+    // candidato todavía no haya respondido nada.
+    publishProgress({}, 0, (test?.duration || 45) * 60);
     await logAudit({
       action: 'TEST_START',
       module: 'tests',
@@ -306,6 +341,7 @@ export function TestApplication({
     setTimeLeft(savedProgress.timeLeft);
     setPhase('exam');
     setTimerActive(true);
+    publishProgress(savedProgress.answers, savedProgress.currentQ, savedProgress.timeLeft);
     // No registrar audit de TEST_START al reanudar
   };
 
@@ -402,6 +438,8 @@ export function TestApplication({
         }
       });
       clearProgress(String(testId), String(candidateId));
+      // Cierra la sesión en el monitoreo: deja de contar como "en curso".
+      await publishProgress(currentAnswers, questions.length, 0, 'finished');
       if (fromTimer) setTimedOut(true);
       setFinalAnswers(currentAnswers);
       setFinished(true);
